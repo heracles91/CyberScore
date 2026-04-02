@@ -31,7 +31,7 @@ sudo apt update && sudo apt install -y python3 python3-venv python3-pip git
 
 ```bash
 sudo useradd -r -m -d /opt/cyberscore -s /bin/bash cyberscore
-sudo -u cyberscore git clone https://github.com/VOTRE_COMPTE/cyberscore /opt/cyberscore
+sudo -u cyberscore git clone https://github.com/heracles91/cyberscore /opt/cyberscore
 ```
 
 ### 3. Environnement virtuel et dépendances
@@ -100,7 +100,7 @@ sudo systemctl restart cyberscore
 ## Installation rapide (développement)
 
 ```bash
-git clone https://github.com/VOTRE_COMPTE/cyberscore
+git clone https://github.com/heracles91/cyberscore
 cd cyberscore
 pip install -r requirements.txt
 cp config.example.py config.py
