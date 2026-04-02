@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CyberScore{% endblock %} — DSI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="nav-logo">🛡</span>
+    <span class="nav-title">CyberScore</span>
+    <span class="nav-company">{{ config.COMPANY_NAME }}</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Dashboard</a></li>
+    <li><a href="{{ url_for('users') }}" {% if request.endpoint in ['users','user_detail','user_add'] %}class="active"{% endif %}>Utilisateurs</a></li>
+    <li><a href="{{ url_for('event_add') }}" {% if request.endpoint == 'event_add' %}class="active"{% endif %}>+ Événement</a></li>
+    <li><a href="{{ url_for('events_list') }}" {% if request.endpoint == 'events_list' %}class="active"{% endif %}>Événements</a></li>
+    <li><a href="{{ url_for('quiz_list') }}" {% if request.endpoint in ['quiz_list','quiz_add','quiz_detail'] %}class="active"{% endif %}>Quizzes</a></li>
+    <li><a href="{{ url_for('leaderboard') }}" target="_blank">Leaderboard ↗</a></li>
+    <li><a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>Paramètres</a></li>
+    <li><a href="{{ url_for('logout') }}" class="nav-logout">Déconnexion</a></li>
+  </ul>
+</nav>
+
+<main class="main-content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

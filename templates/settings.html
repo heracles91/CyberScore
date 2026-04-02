@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Paramètres{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Paramètres</h1>
+</div>
+
+<div class="settings-grid">
+
+  <!-- ─── Informations entreprise ─────────────────────────────────────────── -->
+  <div class="card">
+    <h2 class="card-title">Informations de l'application</h2>
+    <form method="POST" class="form-stack">
+      <input type="hidden" name="action" value="app_settings">
+      <div class="form-group">
+        <label for="company_name">Nom de l'entreprise <span class="required">*</span></label>
+        <input type="text" id="company_name" name="company_name"
+               value="{{ current_company }}" required placeholder="Mon Entreprise">
+      </div>
+      <div class="form-group">
+        <label for="support_email">Email du support IT <span class="required">*</span></label>
+        <input type="email" id="support_email" name="support_email"
+               value="{{ current_support }}" required placeholder="support-it@maboite.fr">
+        <small class="hint">Apparaît dans le pied de page des emails envoyés aux collaborateurs.</small>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ─── Mot de passe admin ───────────────────────────────────────────────── -->
+  <div class="card">
+    <h2 class="card-title">Sécurité — Mot de passe admin</h2>
+    <form method="POST" class="form-stack">
+      <input type="hidden" name="action" value="change_password">
+      <div class="form-group">
+        <label for="current_pass">Mot de passe actuel <span class="required">*</span></label>
+        <input type="password" id="current_pass" name="current_pass"
+               required autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label for="new_pass">Nouveau mot de passe <span class="required">*</span></label>
+        <input type="password" id="new_pass" name="new_pass"
+               required minlength="8" autocomplete="new-password">
+        <small class="hint">8 caractères minimum.</small>
+      </div>
+      <div class="form-group">
+        <label for="confirm_pass">Confirmer le mot de passe <span class="required">*</span></label>
+        <input type="password" id="confirm_pass" name="confirm_pass"
+               required autocomplete="new-password">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ─── Configuration SMTP ──────────────────────────────────────────────── -->
+  <div class="card">
+    <h2 class="card-title">Configuration SMTP</h2>
+    <table class="settings-table">
+      <tr><th>Serveur</th><td><code>{{ cfg.SMTP_SERVER }}</code></td></tr>
+      <tr><th>Port</th><td><code>{{ cfg.SMTP_PORT }}</code></td></tr>
+      <tr><th>Utilisateur</th><td><code>{{ cfg.SMTP_USER }}</code></td></tr>
+      <tr><th>Mot de passe</th><td><code>••••••••</code></td></tr>
+      <tr><th>Nom expéditeur</th><td>{{ cfg.SMTP_FROM_NAME }}</td></tr>
+    </table>
+    <p class="settings-note">⚠️ Éditez <code>config.py</code> pour modifier la configuration SMTP.</p>
+  </div>
+
+  <!-- ─── Test email ───────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2 class="card-title">Test d'envoi email</h2>
+    <p>Vérifiez que la configuration SMTP fonctionne.</p>
+    <form method="POST" class="mt-2">
+      <input type="hidden" name="action" value="test_email">
+      <div class="form-row">
+        <div class="form-group flex-grow">
+          <input type="email" name="test_to" placeholder="destinataire@maboite.fr" required>
+        </div>
+        <button type="submit" class="btn btn-secondary" style="align-self:flex-end;">Envoyer</button>
+      </div>
+    </form>
+
+    <div class="section-sep-light mt-2"></div>
+    <h2 class="card-title mt-2">Snapshot Leaderboard</h2>
+    <p>Enregistre le classement du jour pour calculer les progressions quotidiennes.</p>
+    <form method="POST" class="mt-2">
+      <input type="hidden" name="action" value="snapshot">
+      <button type="submit" class="btn btn-secondary">Prendre un snapshot maintenant</button>
+    </form>
+    <p class="settings-note">En production, planifiez cette tâche chaque nuit via le Planificateur Windows.</p>
+  </div>
+
+</div>
+
+<!-- ─── Types d'événements ──────────────────────────────────────────────────── -->
+<div class="card mt-4" id="event-types">
+  <div class="card-title-row">
+    <h2 class="card-title">Types d'événements</h2>
+    <button type="button" class="btn btn-primary btn-sm" id="toggleAddForm">+ Ajouter un type</button>
+  </div>
+
+  <!-- Formulaire ajout (masqué par défaut) -->
+  <div id="addEventTypeForm" class="add-etype-form hidden">
+    <form method="POST" action="{{ url_for('event_type_add') }}" class="form-inline-grid">
+      <div class="form-group">
+        <label>Code <span class="required">*</span></label>
+        <input type="text" name="code" placeholder="MON_CODE" pattern="[A-Z0-9_]+"
+               title="Majuscules, chiffres et _ uniquement" required>
+        <small class="hint">Ex : QUIZ_AVANCE</small>
+      </div>
+      <div class="form-group">
+        <label>Libellé <span class="required">*</span></label>
+        <input type="text" name="label" placeholder="Quiz avancé réussi" required>
+      </div>
+      <div class="form-group">
+        <label>Direction</label>
+        <select name="direction" id="directionSelect">
+          <option value="+">+ Bonus</option>
+          <option value="-">- Malus</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Points <span class="required">*</span></label>
+        <input type="number" name="points" id="pointsInput" placeholder="20" min="1" required>
+        <small class="hint" id="pointsHint">Valeur positive (le signe est appliqué automatiquement)</small>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Créer</button>
+        <button type="button" class="btn btn-secondary" id="cancelAdd">Annuler</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Liste -->
+  <div class="etype-columns">
+    <!-- Bonus -->
+    <div>
+      <h3 class="event-group-title bonus-title">✅ Bonus</h3>
+      <table class="table">
+        <thead>
+          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for et in event_types if et.direction == '+' %}
+          <tr>
+            <td><code>{{ et.code }}</code></td>
+            <td>{{ et.label }}</td>
+            <td class="pts-pos">+{{ et.points }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
+                    onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">
+                <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Malus -->
+    <div>
+      <h3 class="event-group-title malus-title">⚠️ Malus</h3>
+      <table class="table">
+        <thead>
+          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for et in event_types if et.direction == '-' %}
+          <tr>
+            <td><code>{{ et.code }}</code></td>
+            <td>{{ et.label }}</td>
+            <td class="pts-neg">{{ et.points }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
+                    onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">
+                <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Référentiel niveaux ──────────────────────────────────────────────────── -->
+<div class="card mt-4">
+  <h2 class="card-title">Référentiel des niveaux</h2>
+  <table class="table">
+    <thead>
+      <tr><th>Niveau</th><th>Score minimum</th><th>Score maximum</th><th>Badge</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Débutant</td><td>0</td><td>99</td><td><span class="badge badge-debuta">Débutant</span></td></tr>
+      <tr><td>Vigilant</td><td>100</td><td>299</td><td><span class="badge badge-vigilant">Vigilant</span></td></tr>
+      <tr><td>Gardien</td><td>300</td><td>599</td><td><span class="badge badge-gardien">Gardien</span></td></tr>
+      <tr><td>Expert</td><td>600</td><td>∞</td><td><span class="badge badge-expert">Expert</span></td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Toggle formulaire ajout type événement
+document.getElementById('toggleAddForm').addEventListener('click', function() {
+  document.getElementById('addEventTypeForm').classList.remove('hidden');
+  this.classList.add('hidden');
+});
+document.getElementById('cancelAdd').addEventListener('click', function() {
+  document.getElementById('addEventTypeForm').classList.add('hidden');
+  document.getElementById('toggleAddForm').classList.remove('hidden');
+});
+
+// Auto-uppercase du code
+document.querySelector('input[name="code"]').addEventListener('input', function() {
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+});
+
+// Ancre #event-types → ouvre le formulaire si erreur de création
+if (window.location.hash === '#event-types') {
+  const flash = document.querySelector('.flash-error');
+  if (flash) {
+    document.getElementById('addEventTypeForm').classList.remove('hidden');
+    document.getElementById('toggleAddForm').classList.add('hidden');
+  }
+}
+</script>
+{% endblock %}

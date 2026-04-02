@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ quiz.title }} — CyberScore</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#F0F4F8; color:#333; }
+
+    .test-banner {
+      background: #FFF3CD; color: #856404;
+      padding: 10px 32px; font-weight: 700; font-size: 14px;
+      text-align: center; border-bottom: 2px solid #FFD700;
+    }
+
+    .quiz-header {
+      background: #1E3A5F; color:#fff;
+      padding: 18px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .quiz-header-brand { font-size:20px; font-weight:700; letter-spacing:1px; }
+    .quiz-header-company { font-size:13px; color:#7FAACC; }
+
+    .quiz-container { max-width: 720px; margin: 40px auto; padding: 0 16px 60px; }
+
+    .quiz-intro {
+      background: #fff; border-radius: 10px;
+      padding: 28px 32px; margin-bottom: 28px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    .quiz-intro h1 { color:#1E3A5F; font-size:22px; margin:0 0 10px; }
+    .quiz-meta { display:flex; gap:24px; margin-top:14px; flex-wrap:wrap; }
+    .quiz-meta span { font-size:13px; color:#555; background:#F0F4F8; padding:5px 12px; border-radius:20px; }
+
+    .question-card {
+      background: #fff; border-radius: 10px;
+      padding: 24px 28px; margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      border-left: 4px solid #2E6DA4;
+    }
+    .question-num { font-size:12px; font-weight:700; text-transform:uppercase;
+                    letter-spacing:1px; color:#2E6DA4; margin-bottom:8px; }
+    .question-text { font-size:16px; font-weight:600; color:#1E3A5F; margin:0 0 18px; line-height:1.6; }
+    .question-text p { margin:0 0 8px; }
+    .question-text ul, .question-text ol { margin:4px 0 8px 20px; }
+    .multi-hint { font-size:12px; color:#2E6DA4; font-style:italic; margin-bottom:10px; }
+
+    .choice-label {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 16px; border-radius: 8px;
+      border: 2px solid #E0E8F0; margin-bottom: 10px;
+      cursor: pointer; transition: all .15s;
+    }
+    .choice-label:hover { border-color: #2E6DA4; background: #EEF4FF; }
+    .choice-label input[type="radio"],
+    .choice-label input[type="checkbox"] { width:18px; height:18px; accent-color:#1E3A5F; }
+    .choice-label input:checked ~ span { font-weight:600; color:#1E3A5F; }
+    .choice-label:has(input:checked) { border-color:#1E3A5F; background:#EEF4FF; }
+
+    .quiz-footer {
+      background:#fff; border-radius:10px; padding:20px 28px;
+      display:flex; align-items:center; justify-content:space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    .quiz-progress { font-size:13px; color:#666; }
+    .btn-submit {
+      background: #1E3A5F; color:#fff; border:none;
+      padding: 12px 32px; border-radius:6px; font-size:15px; font-weight:700;
+      cursor:pointer; transition: background .15s;
+    }
+    .btn-submit:hover { background:#2E6DA4; }
+    .btn-submit:disabled { background:#aaa; cursor:not-allowed; }
+    .unanswered-warn { color:#C0392B; font-size:13px; display:none; }
+  </style>
+</head>
+<body>
+
+{% if attempt.is_test %}
+<div class="test-banner">&#9654; MODE PRÉVISUALISATION — Aucun point ne sera attribué pour cette tentative</div>
+{% endif %}
+
+<div class="quiz-header">
+  <div>
+    <div class="quiz-header-brand">&#128737; CyberScore</div>
+    <div class="quiz-header-company">{{ company_name }} — Quiz de cybersécurité</div>
+  </div>
+  {% if quiz.date_limite %}
+  <div style="font-size:13px;color:#7FAACC;">Date limite : {{ quiz.date_limite }}</div>
+  {% endif %}
+</div>
+
+<div class="quiz-container">
+
+  <div class="quiz-intro">
+    <h1>{{ quiz.title }}</h1>
+    {% if quiz.description %}
+    <p style="color:#555;margin:0 0 10px;">{{ quiz.description }}</p>
+    {% endif %}
+    <div class="quiz-meta">
+      <span>&#128100; {{ attempt.prenom }} {{ attempt.nom }}</span>
+      <span>&#10003; Seuil de réussite : {{ quiz.seuil_reussite }}%</span>
+      <span>&#10067; {{ questions|length }} question(s)</span>
+      {% if attempt.is_test %}
+      <span style="background:#FFF3CD;color:#856404;">&#9654; Mode test</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('quiz_submit', token=token) }}" id="quizForm">
+
+    {% for q in questions %}
+    <div class="question-card" data-qid="{{ q.id }}">
+      <div class="question-num">Question {{ loop.index }} / {{ questions|length }}</div>
+      <div class="question-text">{{ q.question_text | safe }}</div>
+      {% if q.multiple_answers %}
+      <p class="multi-hint">&#9745; Plusieurs réponses correctes — cochez toutes celles qui s'appliquent</p>
+      {% endif %}
+      {% for c in q.choices %}
+      <label class="choice-label">
+        {% if q.multiple_answers %}
+        <input type="checkbox" name="q_{{ q.id }}" value="{{ c.id }}">
+        {% else %}
+        <input type="radio" name="q_{{ q.id }}" value="{{ c.id }}" required>
+        {% endif %}
+        <span>{{ c.choice_text }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <div class="quiz-footer">
+      <div>
+        <div class="quiz-progress" id="progressText">0 / {{ questions|length }} réponses</div>
+        <div class="unanswered-warn" id="warnText">Veuillez répondre à toutes les questions.</div>
+      </div>
+      <button type="submit" class="btn-submit" id="submitBtn">Soumettre mes réponses</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+const total = {{ questions|length }};
+const form  = document.getElementById('quizForm');
+const prog  = document.getElementById('progressText');
+const warn  = document.getElementById('warnText');
+
+function countAnswered() {
+  const answered = new Set();
+  // Radio buttons
+  form.querySelectorAll('input[type=radio]:checked').forEach(r => answered.add(r.name));
+  // Checkbox groups (at least one checked per question)
+  form.querySelectorAll('.question-card').forEach(card => {
+    const boxes = card.querySelectorAll('input[type=checkbox]');
+    if (boxes.length > 0) {
+      const anyChecked = card.querySelector('input[type=checkbox]:checked');
+      if (anyChecked) answered.add(boxes[0].name);
+    }
+  });
+  return answered.size;
+}
+
+form.addEventListener('change', function() {
+  const n = countAnswered();
+  prog.textContent = `${n} / ${total} réponses`;
+  if (n === total) warn.style.display = 'none';
+});
+
+form.addEventListener('submit', function(e) {
+  // Validate all questions are answered
+  let allAnswered = true;
+  form.querySelectorAll('.question-card').forEach(card => {
+    const radios    = card.querySelectorAll('input[type=radio]');
+    const checkboxes = card.querySelectorAll('input[type=checkbox]');
+    if (radios.length > 0) {
+      if (!card.querySelector('input[type=radio]:checked')) allAnswered = false;
+    } else if (checkboxes.length > 0) {
+      if (!card.querySelector('input[type=checkbox]:checked')) allAnswered = false;
+    }
+  });
+  if (!allAnswered) {
+    e.preventDefault();
+    warn.style.display = 'block';
+    warn.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+});
+</script>
+</body>
+</html>

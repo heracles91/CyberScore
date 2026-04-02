@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Import CSV{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Import en masse — CSV</h1>
+  <a href="{{ url_for('users') }}" class="btn btn-secondary">← Retour</a>
+</div>
+
+{% if results is none %}
+<!-- Formulaire upload -->
+<div class="card card-narrow">
+  <h2 class="card-title">Importer des utilisateurs</h2>
+
+  <div class="import-info">
+    <p>Le fichier CSV doit contenir les colonnes suivantes (avec en-tête) :</p>
+    <code class="csv-preview">First Name,Last Name,Email,Position</code>
+    <ul class="import-notes">
+      <li>Le login AD est généré automatiquement : <strong>1ère lettre prénom + nom</strong> (ex : <code>jdupont</code>)</li>
+      <li>En cas de doublon de login, un suffixe numérique est ajouté (<code>jdupont2</code>)</li>
+      <li>La colonne <strong>Position</strong> est acceptée mais non stockée</li>
+      <li>Encodage : UTF-8 recommandé</li>
+    </ul>
+    <a href="{{ url_for('users_import_sample') }}" class="btn btn-secondary btn-sm">
+      ⬇ Télécharger un fichier exemple
+    </a>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" class="form-stack mt-2">
+    <div class="form-group">
+      <label for="csvfile">Fichier CSV <span class="required">*</span></label>
+      <input type="file" id="csvfile" name="csvfile" accept=".csv" required>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Lancer l'import</button>
+    </div>
+  </form>
+</div>
+
+{% else %}
+<!-- Résultats -->
+{% set nb_ok    = results | selectattr('status', 'equalto', 'ok')    | list | length %}
+{% set nb_err   = results | selectattr('status', 'equalto', 'erreur')| list | length %}
+
+<div class="card">
+  <h2 class="card-title">Résultats de l'import</h2>
+
+  <div class="import-summary">
+    <div class="summary-item summary-ok">
+      <span class="summary-num">{{ nb_ok }}</span>
+      <span class="summary-label">Créés</span>
+    </div>
+    <div class="summary-item summary-err">
+      <span class="summary-num">{{ nb_err }}</span>
+      <span class="summary-label">Erreurs / Ignorés</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-num">{{ results | length }}</span>
+      <span class="summary-label">Lignes traitées</span>
+    </div>
+  </div>
+
+  <table class="table mt-2">
+    <thead>
+      <tr>
+        <th>Ligne</th>
+        <th>Prénom</th>
+        <th>Nom</th>
+        <th>Email</th>
+        <th>Login AD généré</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td class="date-cell">{{ r.ligne }}</td>
+        <td>{{ r.prenom }}</td>
+        <td>{{ r.nom }}</td>
+        <td>{{ r.email }}</td>
+        <td><code>{{ r.login or '—' }}</code></td>
+        <td>
+          {% if r.status == 'ok' %}
+            <span class="tag-actif">✓ Créé</span>
+          {% else %}
+            <span class="tag-annule" title="{{ r.msg }}">✗ {{ r.msg }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="form-actions mt-2">
+    <a href="{{ url_for('users') }}" class="btn btn-primary">Voir les utilisateurs</a>
+    <a href="{{ url_for('users_import') }}" class="btn btn-secondary">Nouvel import</a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

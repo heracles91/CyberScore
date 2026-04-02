@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Utilisateurs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Utilisateurs <span class="count-badge">{{ users|length }}</span></h1>
+  <div class="header-actions">
+    <a href="{{ url_for('users_import') }}" class="btn btn-secondary">⬆ Import CSV</a>
+    <a href="{{ url_for('user_add') }}" class="btn btn-primary">+ Ajouter</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-toolbar">
+    <input type="text" id="searchInput" class="search-input" placeholder="Rechercher par nom, prénom ou login…">
+  </div>
+  <table class="table" id="usersTable">
+    <thead>
+      <tr>
+        <th>Login AD</th>
+        <th>Nom</th>
+        <th>Prénom</th>
+        <th>Email</th>
+        <th>Score</th>
+        <th>Niveau</th>
+        <th>Statut</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="{% if not u.actif %}row-inactive{% endif %}">
+        <td><code>{{ u.ad_login }}</code></td>
+        <td>{{ u.nom }}</td>
+        <td>{{ u.prenom }}</td>
+        <td>{{ u.email }}</td>
+        <td class="score-cell">{{ u.score_total }} pts</td>
+        <td>
+          <span class="badge badge-{{ u.niveau|lower|replace('é','e')|replace('è','e') }}">{{ u.niveau }}</span>
+          {% if u.is_tester %}<span class="badge" style="background:#D6EAF8;color:#154360;margin-left:4px;">Testeur</span>{% endif %}
+        </td>
+        <td>
+          {% if u.actif %}
+            <span class="status-active">Actif</span>
+          {% else %}
+            <span class="status-inactive">Inactif</span>
+          {% endif %}
+        </td>
+        <td class="actions-cell">
+          <a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-sm btn-secondary">Voir</a>
+          <a href="{{ url_for('event_add') }}?user_id={{ u.id }}" class="btn btn-sm btn-primary">+ Événement</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">Aucun utilisateur enregistré.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Filtre tableau côté client
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

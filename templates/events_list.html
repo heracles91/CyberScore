@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Historique événements{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Historique des événements <span class="count-badge">{{ events|length }}</span></h1>
+  <a href="{{ url_for('event_add') }}" class="btn btn-primary">+ Ajouter un événement</a>
+</div>
+
+<!-- Filtres -->
+<div class="card mb-3">
+  <form method="GET" action="{{ url_for('events_list') }}" class="filters-form">
+    <div class="filters-grid">
+
+      <div class="form-group">
+        <label>Recherche</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="Nom, prénom, login…">
+      </div>
+
+      <div class="form-group">
+        <label>Type</label>
+        <select name="type_id">
+          <option value="">Tous les types</option>
+          {% for et in event_types %}
+          <option value="{{ et.id }}" {% if type_id == et.id|string %}selected{% endif %}>
+            {{ et.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Direction</label>
+        <select name="direction">
+          <option value=""    {% if direction == ''  %}selected{% endif %}>Bonus + Malus</option>
+          <option value="+"   {% if direction == '+' %}selected{% endif %}>Bonus uniquement</option>
+          <option value="-"   {% if direction == '-' %}selected{% endif %}>Malus uniquement</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Statut</label>
+        <select name="statut">
+          <option value=""       {% if statut == ''       %}selected{% endif %}>Tous</option>
+          <option value="actif"  {% if statut == 'actif'  %}selected{% endif %}>Actifs</option>
+          <option value="annule" {% if statut == 'annule' %}selected{% endif %}>Annulés</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Du</label>
+        <input type="date" name="date_from" value="{{ date_from }}">
+      </div>
+
+      <div class="form-group">
+        <label>Au</label>
+        <input type="date" name="date_to" value="{{ date_to }}">
+      </div>
+
+      <div class="form-group">
+        <label>Trier par</label>
+        <select name="sort">
+          <option value="date_desc"   {% if sort == 'date_desc'   %}selected{% endif %}>Date ↓ (récents)</option>
+          <option value="date_asc"    {% if sort == 'date_asc'    %}selected{% endif %}>Date ↑ (anciens)</option>
+          <option value="points_desc" {% if sort == 'points_desc' %}selected{% endif %}>Points ↓</option>
+          <option value="points_asc"  {% if sort == 'points_asc'  %}selected{% endif %}>Points ↑</option>
+          <option value="user"        {% if sort == 'user'        %}selected{% endif %}>Collaborateur A→Z</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="align-self:flex-end;display:flex;gap:8px;">
+        <button type="submit" class="btn btn-primary">Filtrer</button>
+        <a href="{{ url_for('events_list') }}" class="btn btn-secondary">Réinitialiser</a>
+      </div>
+
+    </div>
+  </form>
+</div>
+
+<!-- Tableau -->
+<div class="card">
+  {% if events %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Collaborateur</th>
+        <th>Événement</th>
+        <th>Points</th>
+        <th>Raison</th>
+        <th>Saisi par</th>
+        <th>Date</th>
+        <th>Statut</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr {% if ev.annule %}class="row-cancelled"{% endif %}>
+        <td>
+          <a href="{{ url_for('user_detail', user_id=ev.user_id) }}">
+            {{ ev.prenom }} {{ ev.nom }}
+          </a>
+          <small class="muted">({{ ev.ad_login }})</small>
+        </td>
+        <td>
+          <span class="event-code-badge {% if ev.direction == '+' %}code-bonus{% else %}code-malus{% endif %}">
+            {{ ev.code }}
+          </span><br>
+          <small>{{ ev.label }}</small>
+        </td>
+        <td class="pts {% if ev.direction == '+' %}pts-pos{% else %}pts-neg{% endif %}">
+          {% if ev.direction == '+' %}+{% endif %}{{ ev.points }}
+        </td>
+        <td style="max-width:180px;font-size:13px;color:#555;">
+          {{ ev.raison or '—' }}
+        </td>
+        <td class="date-cell">{{ ev.created_by }}</td>
+        <td class="date-cell">{{ ev.created_at[:16] }}</td>
+        <td>
+          {% if ev.annule %}
+            <span class="tag-annule">Annulé</span>
+          {% else %}
+            <span class="tag-actif">Actif</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not ev.annule %}
+          <form method="POST" action="{{ url_for('event_cancel', event_id=ev.id) }}"
+                onsubmit="return confirm('Annuler cet événement ?')">
+            <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>Aucun événement ne correspond aux filtres sélectionnés.</p>
+    <a href="{{ url_for('events_list') }}" class="btn btn-secondary">Réinitialiser les filtres</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CyberScore — Notification</title>
+</head>
+<body style="margin:0;padding:0;background:#F5F5F5;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F5F5;padding:30px 0;">
+  <tr>
+    <td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+
+        <!-- En-tête DSI -->
+        <tr>
+          <td style="background:#1E3A5F;padding:24px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <span style="font-size:28px;">🛡</span>
+                  <span style="color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:2px;vertical-align:middle;margin-left:10px;">CyberScore</span>
+                </td>
+                <td align="right" style="color:#7FAACC;font-size:13px;">
+                  {{ company_name }}<br>Direction des Systèmes d'Information
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Bandeau événement (vert = bonus, rouge = malus, gris = annulation) -->
+        {% if annulation %}
+        <tr>
+          <td style="background:#666666;padding:16px 32px;text-align:center;">
+            <span style="color:#FFFFFF;font-size:16px;font-weight:700;letter-spacing:1px;">
+              🚫 ÉVÉNEMENT ANNULÉ
+            </span>
+          </td>
+        </tr>
+        {% elif is_bonus %}
+        <tr>
+          <td style="background:#1A7F5A;padding:16px 32px;text-align:center;">
+            <span style="color:#FFFFFF;font-size:16px;font-weight:700;letter-spacing:1px;">
+              ✅ BONNE PRATIQUE DÉTECTÉE — BONUS
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td style="background:#C0392B;padding:16px 32px;text-align:center;">
+            <span style="color:#FFFFFF;font-size:16px;font-weight:700;letter-spacing:1px;">
+              ⚠️ ÉCART DE SÉCURITÉ DÉTECTÉ — MALUS
+            </span>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Corps -->
+        <tr>
+          <td style="padding:32px;">
+
+            <!-- Salutation -->
+            <p style="color:#1E3A5F;font-size:16px;margin:0 0 8px;">
+              Bonjour <strong>{{ user.prenom }} {{ user.nom }}</strong>,
+            </p>
+
+            {% if annulation %}
+            <p style="color:#444;font-size:14px;margin:0 0 24px;">
+              L'événement ci-dessous a été <strong>annulé</strong> par la DSI. Votre score a été recalculé en conséquence.
+            </p>
+            {% elif is_bonus %}
+            <p style="color:#444;font-size:14px;margin:0 0 24px;">
+              La DSI a enregistré une bonne pratique de sécurité vous concernant. Bravo pour votre vigilance !
+            </p>
+            {% else %}
+            <p style="color:#444;font-size:14px;margin:0 0 24px;">
+              La DSI a enregistré un écart de sécurité vous concernant. Retrouvez les détails ci-dessous.
+            </p>
+            {% endif %}
+
+            <!-- Détail événement -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8F9FA;border-radius:6px;padding:20px;margin-bottom:24px;">
+              <tr>
+                <td>
+                  <p style="color:#666;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Événement</p>
+                  <p style="color:#1E3A5F;font-size:17px;font-weight:700;margin:0 0 16px;">{{ etype.label }}</p>
+
+                  {% if raison %}
+                  <p style="color:#666;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Contexte / Raison</p>
+                  <p style="color:#333;font-size:14px;margin:0 0 16px;padding:8px 12px;background:#eee;border-left:3px solid #2E6DA4;border-radius:2px;">{{ raison }}</p>
+                  {% endif %}
+
+                  <p style="color:#666;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Impact</p>
+                  <p style="font-size:22px;font-weight:700;margin:0;color:{% if is_bonus and not annulation %}#1A7F5A{% else %}#C0392B{% endif %};">
+                    {% if is_bonus and not annulation %}+{% endif %}{{ points }} points
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Score avant/après -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr>
+                <td width="33%" align="center" style="background:#F8F9FA;border-radius:6px;padding:16px;margin-right:8px;">
+                  <p style="color:#999;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Score avant</p>
+                  <p style="color:#333;font-size:24px;font-weight:700;margin:0;">{{ score_avant }}</p>
+                </td>
+                <td width="10%" align="center" style="font-size:24px;color:#999;">→</td>
+                <td width="33%" align="center" style="background:#1E3A5F;border-radius:6px;padding:16px;">
+                  <p style="color:#7FAACC;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Score actuel</p>
+                  <p style="color:#FFFFFF;font-size:28px;font-weight:700;margin:0;">{{ score_apres }}</p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Niveau actuel -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr>
+                <td style="background:#F8F9FA;border-radius:6px;padding:16px;">
+                  {% if montee_niveau %}
+                  <p style="color:#1A7F5A;font-size:15px;font-weight:700;margin:0 0 8px;">
+                    🎉 Félicitations ! Vous passez au niveau <strong>{{ niveau_apres }}</strong> !
+                  </p>
+                  <p style="color:#666;font-size:13px;margin:0;">
+                    Vous étiez <strong>{{ niveau_avant }}</strong>, vous êtes maintenant <strong>{{ niveau_apres }}</strong>. Continuez sur cette lancée !
+                  </p>
+                  {% else %}
+                  <p style="color:#666;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Niveau actuel</p>
+                  {% if niveau_apres == 'Expert' %}
+                    <p style="color:#B8860B;font-size:18px;font-weight:700;margin:0;">🏆 {{ niveau_apres }}</p>
+                  {% elif niveau_apres == 'Gardien' %}
+                    <p style="color:#1A7F5A;font-size:18px;font-weight:700;margin:0;">🛡 {{ niveau_apres }}</p>
+                  {% elif niveau_apres == 'Vigilant' %}
+                    <p style="color:#2E6DA4;font-size:18px;font-weight:700;margin:0;">👁 {{ niveau_apres }}</p>
+                  {% else %}
+                    <p style="color:#666;font-size:18px;font-weight:700;margin:0;">📘 {{ niveau_apres }}</p>
+                  {% endif %}
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+
+            <!-- Barème niveaux -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;font-size:12px;">
+              <tr>
+                <td style="color:#999;padding:4px 0;border-bottom:1px solid #eee;">Référentiel :</td>
+                <td align="right" style="color:#999;padding:4px 0;border-bottom:1px solid #eee;">
+                  Débutant 0 | Vigilant 100 | Gardien 300 | Expert 600
+                </td>
+              </tr>
+            </table>
+
+            <!-- CTA Leaderboard -->
+            <p style="text-align:center;margin:0 0 8px;">
+              <a href="{{ leaderboard_url }}"
+                 style="display:inline-block;background:#1E3A5F;color:#FFFFFF;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;font-weight:700;">
+                🏆 Consulter le classement
+              </a>
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#F8F9FA;padding:16px 32px;border-top:1px solid #E0E0E0;">
+            <p style="color:#999;font-size:11px;margin:0;text-align:center;">
+              Ne pas répondre à cet email — Pour toute question, contactez
+              <a href="mailto:{{ support_email }}" style="color:#2E6DA4;">{{ support_email }}</a><br>
+              {{ company_name }} — Direction des Systèmes d'Information — CyberScore
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

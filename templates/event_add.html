@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Ajouter un événement{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Ajouter un événement</h1>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Retour</a>
+</div>
+
+<div class="card card-medium">
+
+  <!-- ÉTAPE 1 : Sélection utilisateur -->
+  <div class="step" id="step1">
+    <h2 class="step-title"><span class="step-num">1</span> Sélectionner le collaborateur</h2>
+
+    <div class="form-group">
+      <label for="userSearch">Rechercher par nom, prénom ou login</label>
+      <input type="text" id="userSearch" placeholder="ex: dupont ou jean…" autocomplete="off">
+      <div id="userSuggestions" class="suggestions-box"></div>
+    </div>
+
+    <div id="selectedUser" class="selected-user hidden">
+      <div class="selected-user-info">
+        <div class="selected-avatar" id="selectedAvatar"></div>
+        <div>
+          <div class="selected-name" id="selectedName"></div>
+          <div class="selected-meta" id="selectedMeta"></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-secondary" id="changeUser">Changer</button>
+    </div>
+  </div>
+
+  <hr class="step-divider">
+
+  <!-- ÉTAPE 2 : Sélection événement -->
+  <div class="step" id="step2">
+    <h2 class="step-title"><span class="step-num">2</span> Choisir l'événement</h2>
+
+    <div class="event-types-grid" id="eventTypesGrid">
+      <!-- Bonus -->
+      <div class="event-group">
+        <h3 class="event-group-title bonus-title">✅ Bonus</h3>
+        {% for et in event_types if et.direction == '+' %}
+        <button type="button" class="event-type-btn bonus-btn"
+                data-id="{{ et.id }}"
+                data-points="{{ et.points }}"
+                data-direction="{{ et.direction }}"
+                data-label="{{ et.label }}"
+                data-code="{{ et.code }}">
+          <span class="et-label">{{ et.label }}</span>
+          <span class="et-points">+{{ et.points }} pts</span>
+        </button>
+        {% endfor %}
+      </div>
+
+      <!-- Malus -->
+      <div class="event-group">
+        <h3 class="event-group-title malus-title">⚠️ Malus</h3>
+        {% for et in event_types if et.direction == '-' %}
+        <button type="button" class="event-type-btn malus-btn"
+                data-id="{{ et.id }}"
+                data-points="{{ et.points }}"
+                data-direction="{{ et.direction }}"
+                data-label="{{ et.label }}"
+                data-code="{{ et.code }}">
+          <span class="et-label">{{ et.label }}</span>
+          <span class="et-points">{{ et.points }} pts</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="selectedEvent" class="selected-event hidden">
+      <span id="selectedEventLabel"></span>
+      <span id="selectedEventPoints" class="pts-badge"></span>
+      <button type="button" class="btn btn-sm btn-secondary" id="changeEvent">Changer</button>
+    </div>
+  </div>
+
+  <hr class="step-divider">
+
+  <!-- ÉTAPE 3 : Détails -->
+  <div class="step" id="step3">
+    <h2 class="step-title"><span class="step-num">3</span> Détails</h2>
+
+    <div class="form-group">
+      <label for="raison">Raison / Commentaire <span id="raisonRequired" class="required hidden">*</span></label>
+      <textarea id="raison" rows="3" placeholder="Décrivez le contexte de cet événement…"></textarea>
+      <small class="hint" id="raisonHint"></small>
+    </div>
+
+    <div class="form-group">
+      <label for="pointsOverride">Points personnalisés <small>(laisser vide pour la valeur par défaut)</small></label>
+      <input type="number" id="pointsOverride" placeholder="ex: 15">
+    </div>
+  </div>
+
+  <hr class="step-divider">
+
+  <!-- PRÉVISUALISATION -->
+  <div id="preview" class="preview-box hidden">
+    <h2 class="step-title"><span class="step-num">4</span> Prévisualisation</h2>
+    <div class="preview-content" id="previewContent"></div>
+    <div class="preview-actions">
+      <button type="button" class="btn btn-primary btn-lg" id="btnConfirm">✓ Confirmer et envoyer l'email</button>
+      <button type="button" class="btn btn-secondary" id="btnPreview">Actualiser la prévisualisation</button>
+    </div>
+  </div>
+
+  <!-- Résultat -->
+  <div id="resultBox" class="result-box hidden"></div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─── État ───────────────────────────────────────────────────────────────────
+const state = {
+  user: null,
+  eventType: null,
+};
+
+// Préselection utilisateur depuis query string
+{% if preselect_user %}
+state.user = {
+  id: {{ preselect_user.id }},
+  nom: "{{ preselect_user.nom }}",
+  prenom: "{{ preselect_user.prenom }}",
+  ad_login: "{{ preselect_user.ad_login }}",
+  score_total: {{ preselect_user.score_total }},
+  niveau: "{{ preselect_user.niveau }}"
+};
+showSelectedUser();
+{% endif %}
+
+// ─── Recherche utilisateur ───────────────────────────────────────────────────
+let searchTimeout;
+document.getElementById('userSearch').addEventListener('input', function() {
+  clearTimeout(searchTimeout);
+  const q = this.value.trim();
+  if (q.length < 2) { hideSuggestions(); return; }
+  searchTimeout = setTimeout(() => fetchUsers(q), 200);
+});
+
+async function fetchUsers(q) {
+  const resp = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+  const users = await resp.json();
+  const box = document.getElementById('userSuggestions');
+  box.innerHTML = '';
+  if (!users.length) {
+    box.innerHTML = '<div class="suggestion-empty">Aucun résultat</div>';
+    box.classList.add('open');
+    return;
+  }
+  users.forEach(u => {
+    const d = document.createElement('div');
+    d.className = 'suggestion-item';
+    d.innerHTML = `<strong>${u.prenom} ${u.nom}</strong> <span class="hint">${u.ad_login}</span> — <span class="pts">${u.score_total} pts</span>`;
+    d.addEventListener('click', () => selectUser(u));
+    box.appendChild(d);
+  });
+  box.classList.add('open');
+}
+
+function hideSuggestions() {
+  document.getElementById('userSuggestions').classList.remove('open');
+}
+
+function selectUser(u) {
+  state.user = u;
+  hideSuggestions();
+  document.getElementById('userSearch').value = '';
+  showSelectedUser();
+  updatePreview();
+}
+
+function showSelectedUser() {
+  const u = state.user;
+  document.getElementById('selectedAvatar').textContent = u.prenom[0] + u.nom[0];
+  document.getElementById('selectedName').textContent = `${u.prenom} ${u.nom}`;
+  document.getElementById('selectedMeta').textContent = `${u.ad_login} — ${u.score_total} pts — ${u.niveau}`;
+  document.getElementById('selectedUser').classList.remove('hidden');
+  document.getElementById('userSearch').classList.add('hidden');
+  document.getElementById('userSuggestions').classList.add('hidden');
+}
+
+document.getElementById('changeUser').addEventListener('click', () => {
+  state.user = null;
+  document.getElementById('selectedUser').classList.add('hidden');
+  document.getElementById('userSearch').classList.remove('hidden');
+  document.getElementById('userSuggestions').classList.remove('hidden');
+  updatePreview();
+});
+
+// ─── Sélection type événement ────────────────────────────────────────────────
+document.querySelectorAll('.event-type-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.event-type-btn').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+    state.eventType = {
+      id: this.dataset.id,
+      points: parseInt(this.dataset.points),
+      direction: this.dataset.direction,
+      label: this.dataset.label,
+      code: this.dataset.code,
+    };
+    // Affiche la sélection
+    document.getElementById('selectedEventLabel').textContent = state.eventType.label;
+    const ptsBadge = document.getElementById('selectedEventPoints');
+    ptsBadge.textContent = (state.eventType.direction === '+' ? '+' : '') + state.eventType.points + ' pts';
+    ptsBadge.className = 'pts-badge ' + (state.eventType.direction === '+' ? 'pts-pos' : 'pts-neg');
+    document.getElementById('selectedEvent').classList.remove('hidden');
+    // Raison obligatoire pour les malus
+    const reqStar = document.getElementById('raisonRequired');
+    const raisonHint = document.getElementById('raisonHint');
+    if (state.eventType.direction === '-') {
+      reqStar.classList.remove('hidden');
+      raisonHint.textContent = 'La raison est obligatoire pour un malus.';
+    } else {
+      reqStar.classList.add('hidden');
+      raisonHint.textContent = '';
+    }
+    // Points override par défaut
+    document.getElementById('pointsOverride').placeholder = `Défaut : ${state.eventType.points}`;
+    updatePreview();
+  });
+});
+
+document.getElementById('changeEvent').addEventListener('click', () => {
+  state.eventType = null;
+  document.querySelectorAll('.event-type-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('selectedEvent').classList.add('hidden');
+  updatePreview();
+});
+
+// ─── Prévisualisation ────────────────────────────────────────────────────────
+document.getElementById('raison').addEventListener('input', updatePreview);
+document.getElementById('pointsOverride').addEventListener('input', updatePreview);
+document.getElementById('btnPreview').addEventListener('click', updatePreview);
+
+function updatePreview() {
+  const preview = document.getElementById('preview');
+  if (!state.user || !state.eventType) { preview.classList.add('hidden'); return; }
+
+  const ptsRaw = document.getElementById('pointsOverride').value.trim();
+  const pts = ptsRaw !== '' ? parseInt(ptsRaw) : state.eventType.points;
+  const scoreBefore = state.user.score_total;
+  const scoreAfter = Math.max(0, scoreBefore + pts);
+  const isBonus = state.eventType.direction === '+';
+
+  document.getElementById('previewContent').innerHTML = `
+    <div class="preview-card ${isBonus ? 'preview-bonus' : 'preview-malus'}">
+      <div class="preview-event">${state.eventType.label}</div>
+      <div class="preview-who">Collaborateur : <strong>${state.user.prenom} ${state.user.nom}</strong> (${state.user.ad_login})</div>
+      <div class="preview-pts">Points : <strong class="${isBonus ? 'pts-pos' : 'pts-neg'}">${isBonus ? '+' : ''}${pts}</strong></div>
+      <div class="preview-score">Score : <strong>${scoreBefore}</strong> → <strong>${scoreAfter}</strong></div>
+      <div class="preview-mail">📧 Un email sera envoyé automatiquement à <strong>${state.user.nom}</strong>.</div>
+    </div>
+  `;
+  preview.classList.remove('hidden');
+}
+
+// ─── Confirmation ─────────────────────────────────────────────────────────────
+document.getElementById('btnConfirm').addEventListener('click', async () => {
+  const raison = document.getElementById('raison').value.trim();
+  const ptsRaw = document.getElementById('pointsOverride').value.trim();
+
+  if (!state.user || !state.eventType) {
+    alert("Sélectionnez un utilisateur et un type d'événement.");
+    return;
+  }
+  if (state.eventType.direction === '-' && !raison) {
+    alert("La raison est obligatoire pour un malus.");
+    document.getElementById('raison').focus();
+    return;
+  }
+
+  const payload = {
+    ad_login: state.user.ad_login,
+    event_code: state.eventType.code,
+    raison: raison,
+    points_override: ptsRaw !== '' ? parseInt(ptsRaw) : null,
+  };
+
+  document.getElementById('btnConfirm').disabled = true;
+  document.getElementById('btnConfirm').textContent = 'Enregistrement…';
+
+  try {
+    const resp = await fetch('/api/events/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    const box = document.getElementById('resultBox');
+
+    if (data.ok) {
+      box.innerHTML = `<div class="result-success">
+        ✅ Événement enregistré ! Nouveau score de ${state.user.prenom} ${state.user.nom} :
+        <strong>${data.nouveau_score} pts</strong> — Niveau : <strong>${data.niveau}</strong><br>
+        <a href="/users/${state.user.id}" class="btn btn-primary mt-2">Voir le profil</a>
+        <a href="/events/add" class="btn btn-secondary mt-2">Ajouter un autre</a>
+      </div>`;
+      box.classList.remove('hidden');
+      document.getElementById('preview').classList.add('hidden');
+      // Reset
+      state.user = null; state.eventType = null;
+    } else {
+      box.innerHTML = `<div class="result-error">❌ Erreur : ${data.error}</div>`;
+      box.classList.remove('hidden');
+      document.getElementById('btnConfirm').disabled = false;
+      document.getElementById('btnConfirm').textContent = '✓ Confirmer et envoyer l\'email';
+    }
+  } catch (e) {
+    alert('Erreur réseau : ' + e);
+    document.getElementById('btnConfirm').disabled = false;
+    document.getElementById('btnConfirm').textContent = '✓ Confirmer et envoyer l\'email';
+  }
+});
+
+// Fermer suggestions au clic extérieur
+document.addEventListener('click', e => {
+  if (!e.target.closest('#step1')) hideSuggestions();
+});
+</script>
+{% endblock %}

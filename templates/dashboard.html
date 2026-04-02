@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <a href="{{ url_for('event_add') }}" class="btn btn-primary">+ Ajouter un événement</a>
+</div>
+
+<!-- Statistiques globales -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.nb_users }}</div>
+    <div class="stat-label">Collaborateurs actifs</div>
+  </div>
+  <div class="stat-card stat-card-blue">
+    <div class="stat-value">{{ stats.nb_events_today }}</div>
+    <div class="stat-label">Événements aujourd'hui</div>
+  </div>
+  <div class="stat-card stat-card-green">
+    <div class="stat-value">{{ stats.avg_score }}</div>
+    <div class="stat-label">Score moyen</div>
+  </div>
+  <div class="stat-card stat-card-gold">
+    <div class="stat-value">{{ stats.niveaux.get('Expert', 0) }}</div>
+    <div class="stat-label">Experts</div>
+  </div>
+</div>
+
+<!-- Répartition niveaux -->
+<div class="section-grid">
+  <div class="card">
+    <h2 class="card-title">Répartition par niveau</h2>
+    <div class="niveau-bars">
+      {% set total = stats.nb_users if stats.nb_users > 0 else 1 %}
+      {% for niveau, color in [('Expert', 'gold'), ('Gardien', 'green'), ('Vigilant', 'blue'), ('Débutant', 'gray')] %}
+      {% set cnt = stats.niveaux.get(niveau, 0) %}
+      <div class="niveau-bar-row">
+        <span class="badge badge-{{ color }}">{{ niveau }}</span>
+        <div class="bar-bg">
+          <div class="bar-fill bar-{{ color }}" style="width: {{ (cnt / total * 100)|round }}%"></div>
+        </div>
+        <span class="bar-count">{{ cnt }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Derniers événements -->
+  <div class="card">
+    <div class="card-title-row">
+      <h2 class="card-title">Derniers événements</h2>
+      <a href="{{ url_for('events_list') }}" class="btn btn-secondary btn-sm">Voir tout →</a>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Collaborateur</th>
+          <th>Événement</th>
+          <th>Points</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in events %}
+        <tr {% if ev.annule %}class="row-cancelled"{% endif %}>
+          <td>
+            <a href="{{ url_for('user_detail', user_id=ev.user_id) }}">
+              {{ ev.prenom }} {{ ev.nom }}
+            </a>
+          </td>
+          <td>{{ ev.label }}</td>
+          <td class="pts {% if ev.direction == '+' %}pts-pos{% else %}pts-neg{% endif %}">
+            {% if ev.direction == '+' %}+{% endif %}{{ ev.points }}
+            {% if ev.annule %}<span class="tag-annule">annulé</span>{% endif %}
+          </td>
+          <td class="date-cell">{{ ev.created_at[:16] }}</td>
+          <td>
+            {% if not ev.annule %}
+            <form method="POST" action="{{ url_for('event_cancel', event_id=ev.id) }}"
+                  onsubmit="return confirm('Annuler cet événement ?')">
+              <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">Aucun événement enregistré.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="text-align:right;margin-top:10px;">
+      <a href="{{ url_for('events_list') }}" class="link-primary" style="font-size:13px;">Voir tous les événements →</a>
+    </div>
+  </div>
+</div>
+
+<!-- Leaderboard complet -->
+<div class="card mt-4">
+  <h2 class="card-title">Classement complet</h2>
+  <table class="table leaderboard-table">
+    <thead>
+      <tr>
+        <th>Rang</th>
+        <th>Collaborateur</th>
+        <th>Score</th>
+        <th>Niveau</th>
+        <th>Progression</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in leaderboard %}
+      <tr>
+        <td class="rang-cell rang-{{ u.rang }}">
+          {% if u.rang == 1 %}🥇
+          {% elif u.rang == 2 %}🥈
+          {% elif u.rang == 3 %}🥉
+          {% else %}#{{ u.rang }}
+          {% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('user_detail', user_id=u.id) }}">
+            {{ u.prenom }} {{ u.nom }}
+          </a>
+          <span class="login-hint">{{ u.ad_login }}</span>
+        </td>
+        <td class="score-cell">{{ u.score_total }} pts</td>
+        <td><span class="badge badge-{{ u.niveau|lower|replace('é','e')|replace('è','e') }}">{{ u.niveau }}</span></td>
+        <td class="delta-cell">
+          {% if u.delta_rang is not none %}
+            {% if u.delta_rang > 0 %}
+              <span class="delta-up">▲ {{ u.delta_rang }}</span>
+            {% elif u.delta_rang < 0 %}
+              <span class="delta-down">▼ {{ u.delta_rang|abs }}</span>
+            {% else %}
+              <span class="delta-flat">—</span>
+            {% endif %}
+            {% if u.delta_score %}
+              <span class="delta-score {% if u.delta_score > 0 %}pts-pos{% else %}pts-neg{% endif %}">
+                ({% if u.delta_score > 0 %}+{% endif %}{{ u.delta_score }})
+              </span>
+            {% endif %}
+          {% else %}
+            <span class="delta-flat">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('event_add') }}?user_id={{ u.id }}" class="btn btn-sm btn-primary">+ Événement</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">Aucun utilisateur actif.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

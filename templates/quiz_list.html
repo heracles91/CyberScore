@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Quizzes{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Quizzes <span class="count-badge">{{ quizzes|length }}</span></h1>
+  <a href="{{ url_for('quiz_add') }}" class="btn btn-primary">+ Créer un quiz</a>
+</div>
+
+{% if quizzes %}
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Titre</th>
+        <th>Questions</th>
+        <th>Seuil</th>
+        <th>Date limite</th>
+        <th>Invitations</th>
+        <th>Complétés</th>
+        <th>Statut</th>
+        <th>Créé le</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quizzes %}
+      <tr>
+        <td><a href="{{ url_for('quiz_detail', quiz_id=q.id) }}" class="link-primary">{{ q.title }}</a></td>
+        <td>{{ q.nb_questions }}</td>
+        <td>{{ q.seuil_reussite }}%</td>
+        <td>{{ q.date_limite or '—' }}</td>
+        <td>{{ q.nb_attempts }}</td>
+        <td>
+          {% if q.nb_attempts > 0 %}
+            <strong>{{ q.nb_completed }}</strong> / {{ q.nb_attempts }}
+            <small class="muted">({{ ((q.nb_completed / q.nb_attempts) * 100)|int }}%)</small>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if q.actif %}
+            <span class="tag-actif">Actif</span>
+          {% else %}
+            <span class="tag-annule">Inactif</span>
+          {% endif %}
+        </td>
+        <td class="date-cell">{{ q.created_at[:10] }}</td>
+        <td>
+          <a href="{{ url_for('quiz_detail', quiz_id=q.id) }}" class="btn btn-sm btn-secondary">Détails</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Aucun quiz créé pour l'instant.</p>
+  <a href="{{ url_for('quiz_add') }}" class="btn btn-primary">Créer le premier quiz</a>
+</div>
+{% endif %}
+{% endblock %}

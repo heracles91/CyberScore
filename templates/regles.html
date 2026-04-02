@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Règles du jeu — CyberScore</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#F0F4F8; color:#1E3A5F; }
+
+    .page-header {
+      background:#1E3A5F; color:#fff; padding:20px 40px;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .page-header-brand { font-size:22px; font-weight:700; letter-spacing:1px; }
+    .page-header-company { font-size:13px; color:#7FAACC; margin-top:2px; }
+
+    .container { max-width:860px; margin:40px auto; padding:0 20px 60px; }
+
+    h1 { font-size:26px; margin:0 0 6px; }
+    .subtitle { color:#5B7A99; font-size:15px; margin-bottom:36px; }
+
+    .section { margin-bottom:36px; }
+    .section-title {
+      font-size:17px; font-weight:700; margin-bottom:16px;
+      display:flex; align-items:center; gap:10px;
+      padding-bottom:8px; border-bottom:2px solid;
+    }
+    .section-title.bonus { border-color:#1A7F5A; color:#1A7F5A; }
+    .section-title.malus { border-color:#C0392B; color:#C0392B; }
+
+    .rules-grid {
+      display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px;
+    }
+    .rule-card {
+      background:#fff; border-radius:10px; padding:16px 18px;
+      box-shadow:0 2px 8px rgba(0,0,0,.07);
+      display:flex; align-items:flex-start; gap:14px;
+    }
+    .rule-points {
+      font-size:18px; font-weight:900; min-width:52px; text-align:center;
+      padding:6px 0; border-radius:8px;
+    }
+    .rule-points.plus { background:#D1F2E8; color:#1A7F5A; }
+    .rule-points.minus { background:#FDECEA; color:#C0392B; }
+    .rule-label { font-size:14px; font-weight:600; color:#1E3A5F; line-height:1.4; }
+
+    /* Niveaux */
+    .levels-section { margin-bottom:36px; }
+    .levels-grid { display:flex; gap:12px; flex-wrap:wrap; }
+    .level-card {
+      background:#fff; border-radius:10px; padding:18px 22px;
+      box-shadow:0 2px 8px rgba(0,0,0,.07); flex:1; min-width:160px; text-align:center;
+    }
+    .level-icon { font-size:28px; margin-bottom:6px; }
+    .level-name { font-size:15px; font-weight:700; color:#1E3A5F; }
+    .level-score { font-size:13px; color:#7B8FA6; margin-top:4px; }
+
+    .btn-lb {
+      display:inline-block; background:#1E3A5F; color:#fff;
+      text-decoration:none; padding:12px 28px; border-radius:6px;
+      font-size:14px; font-weight:700; margin-top:8px;
+    }
+    .btn-lb:hover { background:#16304f; }
+
+    .note {
+      background:#EEF4FB; border-left:4px solid #2E6DA4;
+      padding:14px 18px; border-radius:6px; font-size:14px;
+      color:#1E3A5F; margin-bottom:32px; line-height:1.6;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <div class="page-header-brand">&#128737; CyberScore</div>
+    <div class="page-header-company">{{ company_name }}</div>
+  </div>
+  <a href="{{ leaderboard_url }}" style="color:#7FAACC;font-size:13px;text-decoration:none;">
+    &#127942; Voir le classement ↗
+  </a>
+</div>
+
+<div class="container">
+
+  <h1>&#127381; Règles du jeu</h1>
+  <p class="subtitle">Découvrez comment gagner (et perdre) des points CyberScore, et grimpez dans le classement.</p>
+
+  <div class="note">
+    Le <strong>CyberScore</strong> récompense les bons réflexes en cybersécurité au quotidien.
+    Chaque action (signalement d'un email suspect, réussite d'un quiz, vigilance face au phishing…)
+    vous rapporte des points et vous fait monter de niveau. À l'inverse, certains comportements à risque
+    peuvent faire baisser votre score. Votre score ne peut pas passer en dessous de <strong>0</strong>.
+  </div>
+
+  <!-- Niveaux -->
+  <div class="levels-section">
+    <div class="section-title bonus" style="border-color:#2E6DA4;color:#2E6DA4;">&#127942; Niveaux</div>
+    <div class="levels-grid">
+      <div class="level-card">
+        <div class="level-icon">&#128187;</div>
+        <div class="level-name">Débutant</div>
+        <div class="level-score">0 – 99 pts</div>
+      </div>
+      <div class="level-card">
+        <div class="level-icon">&#128064;</div>
+        <div class="level-name">Vigilant</div>
+        <div class="level-score">100 – 299 pts</div>
+      </div>
+      <div class="level-card">
+        <div class="level-icon">&#128737;</div>
+        <div class="level-name">Gardien</div>
+        <div class="level-score">300 – 599 pts</div>
+      </div>
+      <div class="level-card">
+        <div class="level-icon">&#11088;</div>
+        <div class="level-name">Expert</div>
+        <div class="level-score">600 pts et +</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bonus -->
+  {% if bonus %}
+  <div class="section">
+    <div class="section-title bonus">&#43; Actions qui rapportent des points</div>
+    <div class="rules-grid">
+      {% for e in bonus %}
+      <div class="rule-card">
+        <div class="rule-points plus">+{{ e.points }}</div>
+        <div class="rule-label">{{ e.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Malus -->
+  {% if malus %}
+  <div class="section">
+    <div class="section-title malus">&#8722; Comportements qui font baisser le score</div>
+    <div class="rules-grid">
+      {% for e in malus %}
+      <div class="rule-card">
+        <div class="rule-points minus">{{ e.points }}</div>
+        <div class="rule-label">{{ e.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div style="text-align:center;margin-top:24px;">
+    <a href="{{ leaderboard_url }}" class="btn-lb">&#127942; Voir le classement</a>
+  </div>
+
+  <p style="text-align:center;margin-top:28px;font-size:12px;color:#aaa;">
+    {{ company_name }} — DSI
+  </p>
+</div>
+
+</body>
+</html>

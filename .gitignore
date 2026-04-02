@@ -1,0 +1,52 @@
+# ── Configuration sensible (credentials) ──────────────────────────────────────
+config.py
+.env
+
+# ── Base de données (données personnelles) ────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Données de test / restauration (données nominatives) ─────────────────────
+restore_data.py
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# ── Environnements virtuels ───────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Éditeurs / IDE ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── Fichiers de travail ───────────────────────────────────────────────────────
+modifs.txt
+*.zip
+*.tar.gz
+email_fin_exercice_cyberscore.html
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/

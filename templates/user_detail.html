@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ user.prenom }} {{ user.nom }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ user.prenom }} {{ user.nom }}</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('event_add') }}?user_id={{ user.id }}" class="btn btn-primary">+ Événement</a>
+    <form method="POST" action="{{ url_for('user_toggle_tester', user_id=user.id) }}" style="display:inline"
+          onsubmit="return confirm('Changer le statut testeur de cet utilisateur ?')">
+      <button type="submit" class="btn btn-secondary">
+        {% if user.is_tester %}&#9654; Retirer rôle testeur{% else %}&#9654; Marquer comme testeur{% endif %}
+      </button>
+    </form>
+    <a href="{{ url_for('user_toggle', user_id=user.id) }}"
+       class="btn btn-secondary"
+       onclick="return confirm('Changer le statut de cet utilisateur ?')">
+      {% if user.actif %}Désactiver{% else %}Réactiver{% endif %}
+    </a>
+    <a href="{{ url_for('users') }}" class="btn btn-secondary">← Retour</a>
+  </div>
+</div>
+
+<!-- Profil utilisateur -->
+<div class="profile-grid">
+  <div class="card profile-card">
+    <div class="profile-avatar">
+      {{ user.prenom[0] }}{{ user.nom[0] }}
+    </div>
+    <div class="profile-info">
+      <div class="profile-name">{{ user.prenom }} {{ user.nom }}</div>
+      <div class="profile-login"><code>{{ user.ad_login }}</code></div>
+      <div class="profile-email">{{ user.email }}</div>
+    </div>
+    <div class="profile-score">
+      <div class="score-big">{{ user.score_total }}</div>
+      <div class="score-unit">points</div>
+    </div>
+    <div class="profile-niveau">
+      <span class="badge badge-lg badge-{{ user.niveau|lower|replace('é','e')|replace('è','e') }}">
+        {{ user.niveau }}
+      </span>
+    </div>
+    <div class="profile-status">
+      {% if user.actif %}
+        <span class="status-active">● Actif</span>
+      {% else %}
+        <span class="status-inactive">● Inactif</span>
+      {% endif %}
+      {% if user.is_tester %}
+        <span class="badge" style="background:#D6EAF8;color:#154360;display:block;margin-top:6px;">&#9654; Testeur</span>
+      {% endif %}
+    </div>
+    <div class="profile-since">Membre depuis {{ user.created_at[:10] }}</div>
+  </div>
+
+  <!-- Barre de progression vers le prochain niveau -->
+  <div class="card">
+    <h2 class="card-title">Progression</h2>
+    {% if user.niveau == 'Débutant' %}
+      {% set next_label = 'Vigilant' %}{% set current_min = 0 %}{% set next_min = 100 %}
+    {% elif user.niveau == 'Vigilant' %}
+      {% set next_label = 'Gardien' %}{% set current_min = 100 %}{% set next_min = 300 %}
+    {% elif user.niveau == 'Gardien' %}
+      {% set next_label = 'Expert' %}{% set current_min = 300 %}{% set next_min = 600 %}
+    {% else %}
+      {% set next_label = 'Maximum atteint' %}{% set current_min = 600 %}{% set next_min = 600 %}
+    {% endif %}
+
+    {% if user.niveau != 'Expert' %}
+      {% set progress = ((user.score_total - current_min) / (next_min - current_min) * 100)|round %}
+      {% set progress = [0, [progress, 100]|min]|max %}
+      <p>Prochain niveau : <strong>{{ next_label }}</strong> ({{ next_min }} pts)</p>
+      <p>Il manque <strong>{{ [next_min - user.score_total, 0]|max }} pts</strong></p>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width: {{ progress }}%">{{ progress }}%</div>
+      </div>
+    {% else %}
+      <p class="expert-msg">🏆 Niveau maximum atteint — Félicitations !</p>
+    {% endif %}
+
+    <div class="niveau-legend">
+      <span class="badge badge-debuta">Débutant <small>0</small></span>
+      <span class="badge badge-vigilant">Vigilant <small>100</small></span>
+      <span class="badge badge-gardien">Gardien <small>300</small></span>
+      <span class="badge badge-expert">Expert <small>600</small></span>
+    </div>
+  </div>
+</div>
+
+<!-- Historique événements -->
+<div class="card mt-4">
+  <h2 class="card-title">Historique des événements</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Événement</th>
+        <th>Points</th>
+        <th>Raison</th>
+        <th>Saisi par</th>
+        <th>Statut</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr {% if ev.annule %}class="row-cancelled"{% endif %}>
+        <td class="date-cell">{{ ev.created_at[:16] }}</td>
+        <td>
+          <span class="direction-badge {% if ev.direction == '+' %}dir-bonus{% else %}dir-malus{% endif %}">
+            {% if ev.direction == '+' %}▲{% else %}▼{% endif %}
+          </span>
+          {{ ev.label }}
+        </td>
+        <td class="pts {% if ev.direction == '+' %}pts-pos{% else %}pts-neg{% endif %}">
+          {% if ev.direction == '+' %}+{% endif %}{{ ev.points }}
+        </td>
+        <td class="raison-cell">{{ ev.raison or '—' }}</td>
+        <td>{{ ev.created_by }}</td>
+        <td>
+          {% if ev.annule %}
+            <span class="tag-annule">Annulé</span>
+          {% else %}
+            <span class="tag-actif">Actif</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not ev.annule %}
+          <form method="POST" action="{{ url_for('event_cancel', event_id=ev.id) }}"
+                onsubmit="return confirm('Annuler cet événement ?')">
+            <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">Aucun événement pour cet utilisateur.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

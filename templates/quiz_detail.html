@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Quiz — {{ quiz.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ quiz.title }}</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('quiz_edit', quiz_id=quiz.id) }}" class="btn btn-secondary">✎ Modifier</a>
+    <a href="{{ url_for('quiz_list') }}" class="btn btn-secondary">← Retour</a>
+  </div>
+</div>
+
+<div class="settings-grid">
+
+  <!-- Infos quiz -->
+  <div class="card">
+    <h2 class="card-title">Informations</h2>
+    <table class="settings-table">
+      <tr><th>Seuil de réussite</th><td>{{ quiz.seuil_reussite }}%</td></tr>
+      <tr><th>Date limite</th><td>{{ quiz.date_limite or 'Aucune' }}</td></tr>
+      <tr><th>Questions</th><td>{{ questions|length }}</td></tr>
+      <tr><th>Créé par</th><td>{{ quiz.created_by }}</td></tr>
+      <tr><th>Créé le</th><td>{{ quiz.created_at[:16] }}</td></tr>
+      <tr>
+        <th>Statut</th>
+        <td>
+          {% if quiz.actif %}
+            <span class="tag-actif">Actif</span>
+          {% else %}
+            <span class="tag-annule">Inactif</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+    {% if quiz.description %}
+    <p style="margin-top:12px;color:#555;font-size:14px;">{{ quiz.description }}</p>
+    {% endif %}
+
+    <div class="form-actions mt-2">
+      <form method="POST" action="{{ url_for('quiz_toggle', quiz_id=quiz.id) }}" style="display:inline">
+        <button type="submit" class="btn btn-secondary btn-sm">
+          {% if quiz.actif %}Désactiver{% else %}Activer{% endif %}
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('quiz_preview', quiz_id=quiz.id) }}" style="display:inline">
+        <button type="submit" class="btn btn-success btn-sm" title="Tester le quiz sans attribuer de points">
+          ▶ Tester
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('quiz_delete', quiz_id=quiz.id) }}" style="display:inline"
+            onsubmit="return confirm('Supprimer définitivement ce quiz ?')">
+        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Statistiques -->
+  <div class="card">
+    <h2 class="card-title">Participation</h2>
+    {% set total    = results|length %}
+    {% set done     = results|selectattr('status','equalto','completed')|list %}
+    {% set reussis  = done|selectattr('score_pct','ge', quiz.seuil_reussite)|list %}
+    <div class="import-summary">
+      <div class="summary-item">
+        <span class="summary-num">{{ total }}</span>
+        <span class="summary-label">Invités</span>
+      </div>
+      <div class="summary-item summary-ok">
+        <span class="summary-num">{{ done|length }}</span>
+        <span class="summary-label">Répondus</span>
+      </div>
+      <div class="summary-item" style="background:#FEF3CD;">
+        <span class="summary-num">{{ nb_pending }}</span>
+        <span class="summary-label">En attente</span>
+      </div>
+      <div class="summary-item summary-ok">
+        <span class="summary-num">{{ reussis|length }}</span>
+        <span class="summary-label">Réussis</span>
+      </div>
+    </div>
+    {% if done %}
+    {% set avg = (done|map(attribute='score_pct')|sum / done|length)|int %}
+    <p style="margin-top:8px;font-size:14px;">Score moyen : <strong>{{ avg }}%</strong></p>
+    {% endif %}
+
+    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+      <form method="POST" action="{{ url_for('quiz_send', quiz_id=quiz.id) }}">
+        <button type="submit" class="btn btn-primary"
+          {% if nb_pending == 0 and total > 0 %}disabled title="Tous les utilisateurs ont déjà été invités"{% endif %}>
+          ✉ Envoyer les invitations ({{ results|selectattr('status','equalto','pending')|list|length }} restantes)
+        </button>
+      </form>
+      {% if nb_pending > 0 %}
+      <form method="POST" action="{{ url_for('quiz_remind', quiz_id=quiz.id) }}">
+        <button type="submit" class="btn btn-secondary"
+                title="Renvoie un email de rappel aux {{ nb_pending }} personne(s) n'ayant pas encore répondu">
+          🔔 Relancer ({{ nb_pending }})
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    <p class="hint mt-1">Envoie uniquement aux utilisateurs actifs (non-testeurs) sans invitation existante. Le bouton Relancer renvoie le lien aux personnes n'ayant pas encore répondu.</p>
+  </div>
+</div>
+
+<!-- Questions -->
+<div class="card mt-4">
+  <h2 class="card-title">Questions ({{ questions|length }})</h2>
+  {% for q in questions %}
+  <div class="quiz-question-preview">
+    <p class="q-label">Q{{ loop.index }}. {{ q.question_text | safe }}
+      {% if q.multiple_answers %}<span class="badge" style="background:#D6EAF8;color:#1E3A5F;font-size:10px;margin-left:8px;">Plusieurs réponses</span>{% endif %}
+    </p>
+    <ul class="choices-preview">
+      {% for c in q.choices %}
+      <li {% if c.is_correct %}class="correct-choice"{% endif %}>
+        {% if c.is_correct %}✓{% else %}○{% endif %} {{ c.choice_text }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Résultats réels -->
+{% if results %}
+<div class="card mt-4">
+  <h2 class="card-title">Résultats individuels</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Collaborateur</th>
+        <th>Score</th>
+        <th>Réponses</th>
+        <th>Points gagnés</th>
+        <th>Statut</th>
+        <th>Complété le</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td>{{ r.prenom }} {{ r.nom }} <small class="muted">({{ r.ad_login }})</small></td>
+        <td>
+          {% if r.status == 'completed' %}
+            {% if r.score_pct >= quiz.seuil_reussite %}
+              <strong class="pts-pos">{{ r.score_pct }}%</strong>
+            {% else %}
+              <strong class="pts-neg">{{ r.score_pct }}%</strong>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.status == 'completed' %}{{ r.nb_correct }}/{{ r.nb_total }}{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.points_awarded > 0 %}
+            <span class="pts-pos">+{{ r.points_awarded }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.status == 'completed' %}
+            {% if r.score_pct >= quiz.seuil_reussite %}
+              <span class="tag-actif">Réussi</span>
+            {% else %}
+              <span class="tag-annule">Échoué</span>
+            {% endif %}
+          {% elif r.status == 'pending' %}
+            <span class="badge badge-debuta">En attente</span>
+          {% else %}
+            <span class="tag-annule">{{ r.status }}</span>
+          {% endif %}
+        </td>
+        <td class="date-cell">{{ (r.completed_at or r.sent_at or '—')[:16] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Prévisualisations (tentatives de test) -->
+{% if test_results %}
+<div class="card mt-4" style="border-top:3px solid #2E6DA4;">
+  <h2 class="card-title" style="color:#2E6DA4;">&#9654; Prévisualisations (mode test)</h2>
+  <p class="hint" style="margin-bottom:12px;">Ces tentatives sont faites en mode test — aucun point n'est attribué.</p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Testeur</th>
+        <th>Score</th>
+        <th>Réponses</th>
+        <th>Statut</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in test_results %}
+      <tr>
+        <td>{{ r.prenom }} {{ r.nom }} <small class="muted">({{ r.ad_login }})</small></td>
+        <td>
+          {% if r.status == 'completed' %}
+            {% if r.score_pct >= quiz.seuil_reussite %}
+              <strong class="pts-pos">{{ r.score_pct }}%</strong>
+            {% else %}
+              <strong class="pts-neg">{{ r.score_pct }}%</strong>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.status == 'completed' %}{{ r.nb_correct }}/{{ r.nb_total }}{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.status == 'completed' %}
+            <span class="badge" style="background:#D6EAF8;color:#154360;">Testé</span>
+          {% else %}
+            <span class="badge badge-debuta">En attente</span>
+          {% endif %}
+        </td>
+        <td class="date-cell">{{ (r.completed_at or r.sent_at or '—')[:16] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

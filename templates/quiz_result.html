@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Résultat — {{ quiz.title }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#F0F4F8; }
+
+    .test-banner {
+      background: #FFF3CD; color: #856404;
+      padding: 10px 32px; font-weight: 700; font-size: 14px;
+      text-align: center; border-bottom: 2px solid #FFD700;
+    }
+
+    .quiz-header {
+      background: #1E3A5F; color:#fff; padding:18px 32px;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .quiz-header-brand { font-size:20px; font-weight:700; letter-spacing:1px; }
+    .quiz-header-company { font-size:13px; color:#7FAACC; }
+
+    .result-container { max-width:640px; margin:50px auto; padding:0 16px 60px; }
+
+    .result-card {
+      background:#fff; border-radius:12px;
+      padding:40px 36px; text-align:center;
+      box-shadow: 0 4px 20px rgba(0,0,0,.1);
+    }
+    .result-icon { font-size:64px; margin-bottom:16px; }
+    .result-title { font-size:24px; font-weight:700; margin:0 0 8px; }
+    .result-name  { color:#666; font-size:15px; margin-bottom:28px; }
+
+    .score-ring {
+      width:140px; height:140px; border-radius:50%;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      margin:0 auto 24px;
+      border:8px solid;
+    }
+    .score-ring.pass { border-color:#1A7F5A; color:#1A7F5A; }
+    .score-ring.fail { border-color:#C0392B; color:#C0392B; }
+    .score-pct  { font-size:36px; font-weight:900; }
+    .score-lbl  { font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+
+    .result-stats {
+      display:flex; justify-content:center; gap:28px; margin-bottom:24px;
+    }
+    .stat-item { text-align:center; }
+    .stat-num  { font-size:24px; font-weight:700; color:#1E3A5F; }
+    .stat-lbl  { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; }
+
+    .result-message {
+      padding:16px 20px; border-radius:8px; margin-bottom:24px;
+      font-size:15px; line-height:1.6;
+    }
+    .result-message.pass { background:#D1F2E8; color:#145A3B; border-left:4px solid #1A7F5A; }
+    .result-message.fail { background:#FDECEA; color:#7B241C; border-left:4px solid #C0392B; }
+    .result-message.test { background:#FFF3CD; color:#856404; border-left:4px solid #FFD700; }
+
+    .points-badge {
+      display:inline-block; background:#1A7F5A; color:#fff;
+      font-size:18px; font-weight:700; padding:10px 24px; border-radius:30px;
+      margin-bottom:24px;
+    }
+
+    .btn-lb {
+      display:inline-block; background:#1E3A5F; color:#fff;
+      text-decoration:none; padding:12px 28px; border-radius:6px;
+      font-size:14px; font-weight:700;
+    }
+    .btn-admin {
+      display:inline-block; background:#2E6DA4; color:#fff;
+      text-decoration:none; padding:12px 28px; border-radius:6px;
+      font-size:14px; font-weight:700;
+    }
+
+    /* Correction détaillée */
+    .review-section { margin-top:32px; text-align:left; }
+    .review-title { font-size:16px; font-weight:700; color:#1E3A5F; margin-bottom:16px; border-top:1px solid #E0E8F0; padding-top:16px; }
+    .review-question { margin-bottom:20px; }
+    .review-q-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .review-q-text { font-size:14px; font-weight:600; color:#1E3A5F; line-height:1.5; }
+    .review-q-text p { margin:0 0 4px; }
+    .review-q-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+    .badge-ok   { background:#D1F2E8; color:#145A3B; }
+    .badge-ko   { background:#FDECEA; color:#7B241C; }
+    .review-choice { font-size:13px; padding:7px 12px; border-radius:5px; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+    .review-correct-selected  { background:#D1F2E8; color:#145A3B; font-weight:600; border-left:3px solid #1A7F5A; }
+    .review-correct-missed    { background:#FFF3CD; color:#856404; font-weight:600; border-left:3px solid #F0A500; }
+    .review-wrong-selected    { background:#FDECEA; color:#7B241C; border-left:3px solid #C0392B; }
+    .review-neutral           { background:#F8F9FA; color:#666; border-left:3px solid transparent; }
+  </style>
+</head>
+<body>
+
+{% set is_test = attempt.is_test %}
+
+{% if is_test %}
+<div class="test-banner">&#9654; MODE PRÉVISUALISATION — Résultats simulés, aucun point attribué</div>
+{% endif %}
+
+<div class="quiz-header">
+  <div>
+    <div class="quiz-header-brand">&#128737; CyberScore</div>
+    <div class="quiz-header-company">{{ company_name }}</div>
+  </div>
+</div>
+
+<div class="result-container">
+  <div class="result-card">
+
+    {% set reussi = attempt.score_pct >= quiz.seuil_reussite %}
+
+    {% if reussi %}
+      <div class="result-icon">&#127942;</div>
+      <div class="result-title" style="color:#1A7F5A;">Quiz réussi !</div>
+    {% else %}
+      <div class="result-icon">&#128203;</div>
+      <div class="result-title" style="color:#C0392B;">Quiz non validé</div>
+    {% endif %}
+
+    <div class="result-name">{{ attempt.prenom }} {{ attempt.nom }} — {{ quiz.title }}</div>
+
+    <div class="score-ring {% if reussi %}pass{% else %}fail{% endif %}">
+      <span class="score-pct">{{ attempt.score_pct }}%</span>
+      <span class="score-lbl">Score</span>
+    </div>
+
+    <div class="result-stats">
+      <div class="stat-item">
+        <div class="stat-num">{{ attempt.nb_correct }}</div>
+        <div class="stat-lbl">Correctes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">{{ attempt.nb_total - attempt.nb_correct }}</div>
+        <div class="stat-lbl">Incorrectes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">{{ quiz.seuil_reussite }}%</div>
+        <div class="stat-lbl">Seuil requis</div>
+      </div>
+    </div>
+
+    {% if is_test %}
+      <div class="result-message test">
+        &#9654; Prévisualisation terminée. Aucun point n'a été attribué.
+        Ce quiz {% if reussi %}serait réussi{% else %}ne serait pas validé{% endif %} par un collaborateur avec ce score.
+      </div>
+      <br>
+      <a href="/quizzes/{{ quiz.id }}" class="btn-admin">← Retour au quiz</a>
+    {% elif reussi %}
+      <div class="result-message pass">
+        Félicitations ! Vous avez validé ce quiz et obtenu votre CyberScore bonus.
+        Continuez comme ça !
+      </div>
+      {% if attempt.points_awarded > 0 %}
+      <div class="points-badge">+{{ attempt.points_awarded }} points CyberScore</div>
+      {% endif %}
+      <br>
+      <a href="{{ leaderboard_url }}" class="btn-lb">&#127942; Voir le classement</a>
+    {% else %}
+      <div class="result-message fail">
+        Vous n'avez pas atteint le seuil de {{ quiz.seuil_reussite }}%. Pas de points cette fois,
+        mais chaque quiz est une occasion d'apprendre !
+      </div>
+      <br>
+      <a href="{{ leaderboard_url }}" class="btn-lb">&#127942; Voir le classement</a>
+    {% endif %}
+
+    <!-- Correction détaillée -->
+    {% if questions %}
+    <div class="review-section">
+      <div class="review-title">&#9745; Correction détaillée</div>
+      {% for q in questions %}
+        {# selected = set d'entiers (choice_id sélectionnés par le candidat) #}
+        {% set selected = user_answers.get(q.id, []) %}
+      <div class="review-question">
+        <div class="review-q-header">
+          <div class="review-q-text">Q{{ loop.index }}. {{ q.question_text | safe }}</div>
+          {% if q.multiple_answers %}<span class="badge" style="background:#D6EAF8;color:#1E3A5F;font-size:10px;">Plusieurs réponses</span>{% endif %}
+        </div>
+        {% for c in q.choices %}
+          {% set was_selected = c.id in selected %}
+          {% if c.is_correct and was_selected %}
+            <div class="review-choice review-correct-selected">✓ {{ c.choice_text }} <small style="opacity:.7;">— votre réponse, correcte</small></div>
+          {% elif c.is_correct and not was_selected %}
+            <div class="review-choice review-correct-missed">★ {{ c.choice_text }} <small style="opacity:.7;">— bonne réponse (non sélectionnée)</small></div>
+          {% elif not c.is_correct and was_selected %}
+            <div class="review-choice review-wrong-selected">✗ {{ c.choice_text }} <small style="opacity:.7;">— votre réponse, incorrecte</small></div>
+          {% else %}
+            <div class="review-choice review-neutral">○ {{ c.choice_text }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <p style="margin-top:20px;font-size:12px;color:#aaa;">
+      Ne pas répondre à cet email — {{ company_name }} / DSI —
+      <a href="/regles" style="color:#aaa;">Règles du jeu</a>
+    </p>
+  </div>
+</div>
+
+</body>
+</html>

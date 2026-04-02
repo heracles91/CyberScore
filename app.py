@@ -1,0 +1,826 @@
+# app.py — Application Flask CyberScore
+# Lancement : python app.py  →  http://localhost:5000
+
+from flask import (Flask, render_template, request, redirect, url_for,
+                   session, flash, jsonify, g, Response)
+from datetime import timedelta, datetime
+import functools
+import re
+import io
+import csv
+import unicodedata
+
+import config
+import database as db
+import models
+import mailer
+
+app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+app.permanent_session_lifetime = timedelta(hours=config.SESSION_TIMEOUT_HOURS)
+
+
+@app.context_processor
+def inject_globals():
+    """Injecte les variables globales dans tous les templates."""
+    return {
+        "config": config,
+        # Valeurs modifiables via l'interface (priorité BDD > config.py)
+        "company_name": db.get_setting("company_name", config.COMPANY_NAME),
+        "support_email": db.get_setting("support_email", config.SUPPORT_EMAIL),
+    }
+
+
+def _get_company_name():
+    return db.get_setting("company_name", config.COMPANY_NAME)
+
+
+def _get_support_email():
+    return db.get_setting("support_email", config.SUPPORT_EMAIL)
+
+
+def _get_admin_pass():
+    return db.get_setting("admin_pass", config.ADMIN_PASS)
+
+
+# ─── Helpers CSV ──────────────────────────────────────────────────────────────
+
+def _normalize_str(s):
+    """Supprime les accents et met en minuscules."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', s)
+        if unicodedata.category(c) != 'Mn'
+    ).lower().replace(' ', '').replace('-', '').replace("'", '')
+
+
+def _generate_ad_login(prenom, nom):
+    """Génère un login AD unique : 1ère lettre prénom + nom, sans accent."""
+    base = _normalize_str(prenom[:1]) + _normalize_str(nom)
+    base = re.sub(r'[^a-z0-9]', '', base)
+    login = base
+    counter = 2
+    while db.login_exists_in_db(login):
+        login = base + str(counter)
+        counter += 1
+    return login
+
+
+# ─── Initialisation BDD ───────────────────────────────────────────────────────
+
+@app.before_request
+def before_request():
+    """Initialise la BDD si besoin (sécurisé par le flag d'init)."""
+    if not getattr(app, "_db_initialized", False):
+        db.init_db()
+        app._db_initialized = True
+
+
+# ─── Décorateur authentification ─────────────────────────────────────────────
+
+def login_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("admin_logged_in"):
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ─── Login / Logout ───────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("admin_logged_in"):
+        return redirect(url_for("dashboard"))
+    error = None
+    if request.method == "POST":
+        user = request.form.get("username", "").strip()
+        pwd  = request.form.get("password", "")
+        if user == config.ADMIN_USER and pwd == _get_admin_pass():
+            session.permanent = True
+            session["admin_logged_in"] = True
+            session["admin_user"] = user
+            next_url = request.args.get("next", url_for("dashboard"))
+            return redirect(next_url)
+        error = "Identifiants incorrects."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+
+@app.route("/")
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    leaderboard = models.get_leaderboard_with_progression()
+    events = db.get_recent_events(10)
+    stats = db.get_stats_today()
+    return render_template("dashboard.html",
+                           leaderboard=leaderboard,
+                           events=events,
+                           stats=stats)
+
+
+# ─── Utilisateurs ─────────────────────────────────────────────────────────────
+
+@app.route("/users")
+@login_required
+def users():
+    all_users = db.get_all_users()
+    return render_template("users.html", users=all_users)
+
+
+@app.route("/users/add", methods=["GET", "POST"])
+@login_required
+def user_add():
+    if request.method == "POST":
+        ad_login = request.form.get("ad_login", "").strip()
+        nom      = request.form.get("nom", "").strip()
+        prenom   = request.form.get("prenom", "").strip()
+        email    = request.form.get("email", "").strip()
+
+        # Validations
+        errors = []
+        if not ad_login:
+            errors.append("Le login AD est obligatoire.")
+        if not nom:
+            errors.append("Le nom est obligatoire.")
+        if not prenom:
+            errors.append("Le prénom est obligatoire.")
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            errors.append("L'adresse email n'est pas valide.")
+
+        if not errors:
+            ok, err = db.create_user(ad_login, nom, prenom, email)
+            if ok:
+                flash(f"Utilisateur {prenom} {nom} créé avec succès.", "success")
+                return redirect(url_for("users"))
+            else:
+                if "UNIQUE" in str(err):
+                    errors.append(f"Le login AD '{ad_login}' existe déjà.")
+                else:
+                    errors.append(f"Erreur : {err}")
+
+        for e in errors:
+            flash(e, "error")
+        return render_template("user_add.html",
+                               form=request.form)
+
+    return render_template("user_add.html", form={})
+
+
+@app.route("/users/<int:user_id>")
+@login_required
+def user_detail(user_id):
+    user = db.get_user_by_id(user_id)
+    if not user:
+        flash("Utilisateur introuvable.", "error")
+        return redirect(url_for("users"))
+    events = db.get_user_events(user_id)
+    return render_template("user_detail.html", user=user, events=events)
+
+
+@app.route("/users/<int:user_id>/toggle")
+@login_required
+def user_toggle(user_id):
+    db.toggle_user_actif(user_id)
+    return redirect(url_for("user_detail", user_id=user_id))
+
+
+@app.route("/users/<int:user_id>/toggle-tester", methods=["POST"])
+@login_required
+def user_toggle_tester(user_id):
+    db.toggle_user_tester(user_id)
+    return redirect(url_for("user_detail", user_id=user_id))
+
+
+# ─── Import CSV utilisateurs ───────────────────────────────────────────────────
+
+@app.route("/users/import/sample")
+@login_required
+def users_import_sample():
+    """Télécharge un fichier CSV exemple."""
+    content = "First Name,Last Name,Email,Position\nJean,DUPONT,j.dupont@maboite.fr,Comptable\nMarie,MARTIN,m.martin@maboite.fr,RH\n"
+    return Response(
+        content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_utilisateurs.csv"}
+    )
+
+
+@app.route("/users/import", methods=["GET", "POST"])
+@login_required
+def users_import():
+    results = None
+    if request.method == "POST":
+        f = request.files.get("csvfile")
+        if not f or not f.filename.endswith(".csv"):
+            flash("Veuillez sélectionner un fichier .csv valide.", "error")
+            return redirect(url_for("users_import"))
+
+        stream = io.StringIO(f.stream.read().decode("utf-8-sig"))
+        reader = csv.DictReader(stream)
+
+        # Vérification colonnes
+        required = {"First Name", "Last Name", "Email"}
+        if not required.issubset(set(reader.fieldnames or [])):
+            flash(f"Colonnes attendues : First Name, Last Name, Email, Position. Trouvées : {', '.join(reader.fieldnames or [])}", "error")
+            return redirect(url_for("users_import"))
+
+        results = []
+        for i, row in enumerate(reader, start=2):
+            prenom   = row.get("First Name", "").strip()
+            nom      = row.get("Last Name", "").strip().upper()
+            email    = row.get("Email", "").strip().lower()
+
+            # Validation
+            if not prenom or not nom:
+                results.append({"ligne": i, "status": "erreur", "msg": "Prénom ou nom vide", "prenom": prenom, "nom": nom, "email": email, "login": ""})
+                continue
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+                results.append({"ligne": i, "status": "erreur", "msg": f"Email invalide : {email}", "prenom": prenom, "nom": nom, "email": email, "login": ""})
+                continue
+
+            ad_login = _generate_ad_login(prenom, nom)
+            ok, err = db.create_user(ad_login, nom, prenom, email)
+            if ok:
+                results.append({"ligne": i, "status": "ok", "msg": "Créé", "prenom": prenom, "nom": nom, "email": email, "login": ad_login})
+            else:
+                results.append({"ligne": i, "status": "erreur", "msg": err, "prenom": prenom, "nom": nom, "email": email, "login": ad_login})
+
+    return render_template("users_import.html", results=results)
+
+
+# ─── Événements ───────────────────────────────────────────────────────────────
+
+@app.route("/events")
+@login_required
+def events_list():
+    search     = request.args.get("search", "").strip()
+    direction  = request.args.get("direction", "")
+    statut     = request.args.get("statut", "")
+    type_id    = request.args.get("type_id", "")
+    date_from  = request.args.get("date_from", "")
+    date_to    = request.args.get("date_to", "")
+    sort       = request.args.get("sort", "date_desc")
+
+    events      = db.get_all_events_filtered(search, direction, statut, type_id, date_from, date_to, sort)
+    event_types = db.get_all_event_types()
+    return render_template("events_list.html",
+                           events=events, event_types=event_types,
+                           search=search, direction=direction, statut=statut,
+                           type_id=type_id, date_from=date_from, date_to=date_to,
+                           sort=sort)
+
+@app.route("/events/add", methods=["GET", "POST"])
+@login_required
+def event_add():
+    event_types = db.get_all_event_types()
+    # Préselection utilisateur via query string (depuis /users/<id>)
+    preselect_user_id = request.args.get("user_id", "")
+    preselect_user = None
+    if preselect_user_id:
+        preselect_user = db.get_user_by_id(int(preselect_user_id))
+
+    return render_template("event_add.html",
+                           event_types=event_types,
+                           preselect_user=preselect_user)
+
+
+@app.route("/events/cancel/<int:event_id>", methods=["POST"])
+@login_required
+def event_cancel(event_id):
+    admin = session.get("admin_user", "admin")
+    ok, msg = models.cancel_event(event_id, admin)
+    if ok:
+        flash(msg, "success")
+    else:
+        flash(msg, "error")
+    # Retour vers la page précédente
+    ref = request.referrer or url_for("dashboard")
+    return redirect(ref)
+
+
+# ─── API interne ──────────────────────────────────────────────────────────────
+
+@app.route("/api/users/search")
+@login_required
+def api_users_search():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    return jsonify(db.search_users(q))
+
+
+@app.route("/api/events/add", methods=["POST"])
+def api_events_add():
+    """
+    Endpoint POST JSON pour ajouter un événement.
+    Accepte les requêtes authentifiées par session OU par clé API (header X-API-Key).
+    Usage webhook GoPhish : POST /api/events/add
+    Body JSON : { "ad_login": "...", "event_code": "...", "raison": "...", "points_override": null }
+    """
+    # Authentification : session admin OU clé API (optionnel, à configurer)
+    if not session.get("admin_logged_in"):
+        api_key = request.headers.get("X-API-Key", "")
+        if not api_key or api_key != getattr(config, "API_KEY", None):
+            return jsonify({"ok": False, "error": "Non autorisé"}), 403
+
+    data = request.get_json(force=True, silent=True) or {}
+    ad_login      = data.get("ad_login", "").strip()
+    event_code    = data.get("event_code", "").strip()
+    raison        = data.get("raison", "")
+    points_override = data.get("points_override")  # None = utilise le défaut
+
+    if not ad_login or not event_code:
+        return jsonify({"ok": False, "error": "ad_login et event_code sont obligatoires"}), 400
+
+    user = db.get_user_by_login(ad_login)
+    if not user:
+        return jsonify({"ok": False, "error": f"Utilisateur '{ad_login}' introuvable"}), 404
+
+    etype = db.get_event_type_by_code(event_code)
+    if not etype:
+        return jsonify({"ok": False, "error": f"Code événement '{event_code}' inconnu"}), 404
+
+    pts = int(points_override) if points_override is not None else None
+    admin = session.get("admin_user", "api")
+    ok, msg, event_id = models.add_event(user["id"], etype["id"], pts, raison, admin)
+
+    if ok:
+        updated = db.get_user_by_id(user["id"])
+        return jsonify({
+            "ok": True,
+            "event_id": event_id,
+            "nouveau_score": updated["score_total"],
+            "niveau": updated["niveau"],
+        })
+    else:
+        return jsonify({"ok": False, "error": msg}), 400
+
+
+@app.route("/api/leaderboard")
+def api_leaderboard():
+    """Retourne le leaderboard en JSON (page publique)."""
+    lb = db.get_leaderboard()
+    result = []
+    for rang, u in enumerate(lb, 1):
+        entry = {
+            "rang": rang,
+            "score": u["score_total"],
+            "niveau": u["niveau"],
+        }
+        if rang <= 10:
+            entry["nom"] = u["nom"]
+            entry["prenom"] = u["prenom"]
+        else:
+            entry["nom"] = f"Collaborateur #{rang}"
+            entry["prenom"] = ""
+        result.append(entry)
+    return jsonify(result)
+
+
+# ─── Leaderboard public ───────────────────────────────────────────────────────
+
+@app.route("/leaderboard")
+def leaderboard():
+    """Page publique — pas d'authentification requise."""
+    return render_template("leaderboard.html", company_name=_get_company_name())
+
+
+# ─── Paramètres ───────────────────────────────────────────────────────────────
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "app_settings":
+            company = request.form.get("company_name", "").strip()
+            support = request.form.get("support_email", "").strip()
+            if not company:
+                flash("Le nom de l'entreprise est obligatoire.", "error")
+            elif not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", support):
+                flash("Adresse email de support invalide.", "error")
+            else:
+                db.set_setting("company_name", company)
+                db.set_setting("support_email", support)
+                flash("Paramètres de l'application mis à jour.", "success")
+
+        elif action == "change_password":
+            current  = request.form.get("current_pass", "")
+            new_pass = request.form.get("new_pass", "")
+            confirm  = request.form.get("confirm_pass", "")
+            if current != _get_admin_pass():
+                flash("Mot de passe actuel incorrect.", "error")
+            elif len(new_pass) < 8:
+                flash("Le nouveau mot de passe doit faire au moins 8 caractères.", "error")
+            elif new_pass != confirm:
+                flash("Les mots de passe ne correspondent pas.", "error")
+            else:
+                db.set_setting("admin_pass", new_pass)
+                flash("Mot de passe admin mis à jour.", "success")
+
+        elif action == "test_email":
+            to = request.form.get("test_to", "").strip()
+            if not to:
+                flash("Saisissez une adresse email de test.", "error")
+            else:
+                try:
+                    mailer.send_test_email(to)
+                    flash(f"Email de test envoyé à {to}.", "success")
+                except Exception as e:
+                    flash(f"Échec d'envoi : {e}", "error")
+
+        elif action == "snapshot":
+            db.snapshot_leaderboard()
+            flash("Snapshot du leaderboard enregistré.", "success")
+
+    event_types = db.get_all_event_types()
+    return render_template("settings.html",
+                           cfg=config,
+                           event_types=event_types,
+                           current_company=_get_company_name(),
+                           current_support=_get_support_email())
+
+
+# ─── Types d'événements ────────────────────────────────────────────────────────
+
+@app.route("/event-types/add", methods=["POST"])
+@login_required
+def event_type_add():
+    code      = request.form.get("code", "").strip().upper()
+    label     = request.form.get("label", "").strip()
+    points    = request.form.get("points", "0").strip()
+    direction = request.form.get("direction", "+")
+
+    errors = []
+    if not code or not re.match(r'^[A-Z0-9_]+$', code):
+        errors.append("Le code doit être en MAJUSCULES (lettres, chiffres, _).")
+    if not label:
+        errors.append("Le libellé est obligatoire.")
+    try:
+        pts = int(points)
+        if pts == 0:
+            errors.append("Les points ne peuvent pas être 0.")
+        # Cohérence direction/signe
+        if direction == "+" and pts < 0:
+            pts = abs(pts)
+        elif direction == "-" and pts > 0:
+            pts = -pts
+    except ValueError:
+        errors.append("Les points doivent être un entier.")
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+    else:
+        ok, err = db.create_event_type(code, label, pts, direction)
+        if ok:
+            flash(f"Type d'événement « {label} » créé.", "success")
+        else:
+            flash(f"Erreur : {err}", "error")
+
+    return redirect(url_for("settings") + "#event-types")
+
+
+@app.route("/event-types/delete/<int:type_id>", methods=["POST"])
+@login_required
+def event_type_delete(type_id):
+    ok, err = db.delete_event_type(type_id)
+    if ok:
+        flash("Type d'événement supprimé.", "success")
+    else:
+        flash(f"Impossible de supprimer : {err}", "error")
+    return redirect(url_for("settings") + "#event-types")
+
+
+# ─── Quiz — Admin ─────────────────────────────────────────────────────────────
+
+@app.route("/quizzes")
+@login_required
+def quiz_list():
+    quizzes = db.get_all_quizzes()
+    return render_template("quiz_list.html", quizzes=quizzes)
+
+
+@app.route("/quizzes/add", methods=["GET", "POST"])
+@login_required
+def quiz_add():
+    if request.method == "POST":
+        title       = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        date_limite = request.form.get("date_limite", "").strip()
+        seuil       = request.form.get("seuil_reussite", "80").strip()
+        admin       = session.get("admin_user", "admin")
+
+        errors = []
+        if not title:
+            errors.append("Le titre du quiz est obligatoire.")
+        try:
+            seuil_int = int(seuil)
+            if not 1 <= seuil_int <= 100:
+                errors.append("Le seuil doit être entre 1 et 100.")
+        except ValueError:
+            errors.append("Seuil invalide.")
+            seuil_int = 80
+
+        # Parsing des questions
+        _QUILL_EMPTY = {"<p><br></p>", "<p></p>", ""}
+        nb_q = int(request.form.get("nb_questions", 0))
+        questions_data = []
+        for i in range(nb_q):
+            q_text = request.form.get(f"q_{i}_text", "").strip()
+            if not q_text or q_text in _QUILL_EMPTY:
+                continue
+            multiple_answers = request.form.get(f"q_{i}_multiple", "") == "1"
+            correct_indices = set(request.form.getlist(f"q_{i}_correct"))
+            choices = []
+            j = 0
+            while True:
+                ct = request.form.get(f"q_{i}_c_{j}_text", "").strip()
+                if not ct:
+                    if j >= 2:
+                        break
+                else:
+                    choices.append({"text": ct, "is_correct": str(j) in correct_indices})
+                j += 1
+                if j > 10:
+                    break
+            if len(choices) < 2:
+                errors.append(f"Question {i+1} : au moins 2 choix requis.")
+            elif not any(c["is_correct"] for c in choices):
+                errors.append(f"Question {i+1} : marquez au moins une bonne réponse.")
+            else:
+                questions_data.append({"text": q_text, "choices": choices, "multiple_answers": multiple_answers})
+
+        if not questions_data:
+            errors.append("Le quiz doit contenir au moins une question.")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("quiz_add.html", form=request.form)
+
+        quiz_id = db.create_quiz(title, description, date_limite or None, seuil_int, admin)
+        for ordre_q, q in enumerate(questions_data):
+            qid = db.add_quiz_question(quiz_id, q["text"], ordre_q, q.get("multiple_answers", False))
+            for ordre_c, c in enumerate(q["choices"]):
+                db.add_quiz_choice(qid, c["text"], c["is_correct"], ordre_c)
+
+        flash(f"Quiz « {title} » créé avec {len(questions_data)} question(s).", "success")
+        return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+    return render_template("quiz_add.html", form={})
+
+
+@app.route("/quizzes/<int:quiz_id>")
+@login_required
+def quiz_detail(quiz_id):
+    quiz = db.get_quiz_by_id(quiz_id)
+    if not quiz:
+        flash("Quiz introuvable.", "error")
+        return redirect(url_for("quiz_list"))
+    questions    = db.get_quiz_questions(quiz_id)
+    results      = db.get_quiz_results(quiz_id, is_test=False)
+    test_results = db.get_quiz_results(quiz_id, is_test=True)
+    nb_pending   = sum(1 for r in results if r["status"] == "pending")
+    return render_template("quiz_detail.html",
+                           quiz=quiz, questions=questions,
+                           results=results, test_results=test_results,
+                           nb_pending=nb_pending)
+
+
+@app.route("/quizzes/<int:quiz_id>/send", methods=["POST"])
+@login_required
+def quiz_send(quiz_id):
+    admin = session.get("admin_user", "admin")
+    sent, errors = models.send_quiz_invitations(quiz_id, admin)
+    if sent == 0 and errors == 0:
+        flash("Tous les utilisateurs actifs ont déjà reçu une invitation.", "info")
+    elif errors:
+        flash(f"{sent} invitation(s) envoyée(s). {errors} échec(s).", "error")
+    else:
+        flash(f"{sent} invitation(s) envoyée(s) avec succès.", "success")
+    return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+
+@app.route("/quizzes/<int:quiz_id>/edit", methods=["GET", "POST"])
+@login_required
+def quiz_edit(quiz_id):
+    quiz = db.get_quiz_by_id(quiz_id)
+    if not quiz:
+        flash("Quiz introuvable.", "error")
+        return redirect(url_for("quiz_list"))
+
+    if request.method == "POST":
+        title       = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        date_limite = request.form.get("date_limite", "").strip()
+        seuil       = request.form.get("seuil_reussite", "80").strip()
+        admin       = session.get("admin_user", "admin")
+
+        errors = []
+        if not title:
+            errors.append("Le titre du quiz est obligatoire.")
+        try:
+            seuil_int = int(seuil)
+            if not 1 <= seuil_int <= 100:
+                errors.append("Le seuil doit être entre 1 et 100.")
+        except ValueError:
+            errors.append("Seuil invalide.")
+            seuil_int = 80
+
+        _QUILL_EMPTY = {"<p><br></p>", "<p></p>", ""}
+        nb_q = int(request.form.get("nb_questions", 0))
+        questions_data = []
+        for i in range(nb_q):
+            q_text = request.form.get(f"q_{i}_text", "").strip()
+            if not q_text or q_text in _QUILL_EMPTY:
+                continue
+            multiple_answers = request.form.get(f"q_{i}_multiple", "") == "1"
+            correct_indices  = set(request.form.getlist(f"q_{i}_correct"))
+            choices = []
+            j = 0
+            while True:
+                ct = request.form.get(f"q_{i}_c_{j}_text", "").strip()
+                if not ct:
+                    if j >= 2:
+                        break
+                else:
+                    choices.append({"text": ct, "is_correct": str(j) in correct_indices})
+                j += 1
+                if j > 10:
+                    break
+            if len(choices) < 2:
+                errors.append(f"Question {i+1} : au moins 2 choix requis.")
+            elif not any(c["is_correct"] for c in choices):
+                errors.append(f"Question {i+1} : marquez au moins une bonne réponse.")
+            else:
+                questions_data.append({"text": q_text, "choices": choices, "multiple_answers": multiple_answers})
+
+        if not questions_data:
+            errors.append("Le quiz doit contenir au moins une question.")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            existing_questions = db.get_quiz_questions(quiz_id)
+            return render_template("quiz_edit.html", quiz=quiz, questions=existing_questions)
+
+        db.update_quiz(quiz_id, title, description, date_limite or None, seuil_int)
+        db.delete_quiz_questions_and_choices(quiz_id)
+        for ordre_q, q in enumerate(questions_data):
+            qid = db.add_quiz_question(quiz_id, q["text"], ordre_q, q.get("multiple_answers", False))
+            for ordre_c, c in enumerate(q["choices"]):
+                db.add_quiz_choice(qid, c["text"], c["is_correct"], ordre_c)
+
+        flash(f"Quiz « {title} » mis à jour avec {len(questions_data)} question(s).", "success")
+        return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+    questions = db.get_quiz_questions(quiz_id)
+    return render_template("quiz_edit.html", quiz=quiz, questions=questions)
+
+
+@app.route("/quizzes/<int:quiz_id>/preview", methods=["POST"])
+@login_required
+def quiz_preview(quiz_id):
+    quiz = db.get_quiz_by_id(quiz_id)
+    if not quiz:
+        flash("Quiz introuvable.", "error")
+        return redirect(url_for("quiz_list"))
+
+    if not db.get_quiz_questions(quiz_id):
+        flash("Ce quiz n'a pas encore de questions.", "error")
+        return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+    testers = db.get_tester_users()
+    if not testers:
+        flash("Aucun testeur trouvé. Marquez un utilisateur comme testeur dans la fiche utilisateur.", "error")
+        return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+    tester = testers[0]
+    token = db.create_test_quiz_attempt(quiz_id, tester["id"])
+    flash(f"Mode prévisualisation — compte : {tester['prenom']} {tester['nom']} (aucun point attribué)", "info")
+    return redirect(url_for("quiz_take", token=token))
+
+
+@app.route("/quizzes/<int:quiz_id>/remind", methods=["POST"])
+@login_required
+def quiz_remind(quiz_id):
+    admin = session.get("admin_user", "admin")
+    sent, errors = models.send_quiz_reminders(quiz_id, admin)
+    if sent == 0 and errors == 0:
+        flash("Aucun utilisateur en attente à relancer.", "info")
+    elif errors:
+        flash(f"{sent} rappel(s) envoyé(s). {errors} échec(s).", "error")
+    else:
+        flash(f"{sent} rappel(s) de quiz envoyé(s) avec succès.", "success")
+    return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+
+@app.route("/quizzes/<int:quiz_id>/toggle", methods=["POST"])
+@login_required
+def quiz_toggle(quiz_id):
+    db.toggle_quiz_actif(quiz_id)
+    return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+
+@app.route("/quizzes/<int:quiz_id>/delete", methods=["POST"])
+@login_required
+def quiz_delete(quiz_id):
+    ok, err = db.delete_quiz(quiz_id)
+    if ok:
+        flash("Quiz supprimé.", "success")
+        return redirect(url_for("quiz_list"))
+    flash(f"Impossible de supprimer : {err}", "error")
+    return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+
+# ─── Quiz — Public (accès par token) ──────────────────────────────────────────
+
+@app.route("/quiz/<token>")
+def quiz_take(token):
+    attempt = db.get_quiz_attempt_by_token(token)
+    if not attempt:
+        return render_template("quiz_invalid.html", msg="Lien invalide ou expiré.",
+                               company_name=_get_company_name()), 404
+    if attempt["status"] == "completed":
+        return redirect(url_for("quiz_result", token=token))
+
+    quiz = db.get_quiz_by_id(attempt["quiz_id"])
+    if not quiz or not quiz["actif"]:
+        return render_template("quiz_invalid.html", msg="Ce quiz n'est plus disponible.",
+                               company_name=_get_company_name()), 410
+
+    if quiz["date_limite"]:
+        from datetime import date
+        if date.today().isoformat() > quiz["date_limite"]:
+            db.complete_quiz_attempt(token, 0, 0, 0, 0)
+            return render_template("quiz_invalid.html", msg="Ce quiz est expiré.",
+                                   company_name=_get_company_name()), 410
+
+    db.start_quiz_attempt(token)
+    questions = db.get_quiz_questions(quiz["id"])
+    return render_template("quiz_take.html",
+                           quiz=quiz, questions=questions, token=token,
+                           attempt=attempt,
+                           company_name=_get_company_name())
+
+
+@app.route("/quiz/<token>/submit", methods=["POST"])
+def quiz_submit(token):
+    attempt = db.get_quiz_attempt_by_token(token)
+    if not attempt or attempt["status"] == "completed":
+        return redirect(url_for("quiz_result", token=token))
+
+    answers = {key[2:]: request.form.getlist(key) for key in request.form if key.startswith("q_")}
+    result  = models.submit_quiz(token, answers)
+    if result is None:
+        flash("Erreur lors de la soumission.", "error")
+        return redirect(url_for("quiz_take", token=token))
+    return redirect(url_for("quiz_result", token=token))
+
+
+@app.route("/quiz/<token>/result")
+def quiz_result(token):
+    attempt = db.get_quiz_attempt_by_token(token)
+    if not attempt:
+        return render_template("quiz_invalid.html", msg="Lien invalide.",
+                               company_name=_get_company_name()), 404
+    quiz         = db.get_quiz_by_id(attempt["quiz_id"])
+    questions    = db.get_quiz_questions(attempt["quiz_id"])
+    user_answers = db.get_attempt_answers(attempt["id"])  # {question_id: set(choice_ids)}
+    return render_template("quiz_result.html",
+                           attempt=attempt, quiz=quiz,
+                           company_name=_get_company_name(),
+                           leaderboard_url=config.LEADERBOARD_URL,
+                           questions=questions,
+                           user_answers=user_answers)
+
+
+# ─── Page règles (publique) ───────────────────────────────────────────────────
+
+@app.route("/regles")
+def regles():
+    event_types = db.get_all_event_types()
+    bonus  = [e for e in event_types if e["direction"] == "+"]
+    malus  = [e for e in event_types if e["direction"] == "-"]
+    return render_template("regles.html",
+                           bonus=bonus, malus=malus,
+                           company_name=_get_company_name(),
+                           leaderboard_url=config.LEADERBOARD_URL)
+
+
+# ─── Lancement ────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    db.init_db()
+    app.run(debug=True, host="0.0.0.0", port=5000)
