@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Modifier l'événement #{{ event.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Modifier l'événement #{{ event.id }}</h1>
+  <a href="{{ url_for('events_list') }}" class="btn btn-secondary">&larr; Retour</a>
+</div>
+
+<div class="card card-medium">
+
+  <!-- Info collaborateur (non modifiable) -->
+  <div class="form-group">
+    <label>Collaborateur</label>
+    <div class="selected-user">
+      <div class="selected-user-info">
+        <div class="selected-avatar">{{ event.prenom[0] }}{{ event.nom[0] }}</div>
+        <div>
+          <div class="selected-name">{{ event.prenom }} {{ event.nom }}</div>
+          <div class="selected-meta">{{ event.ad_login }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="step-divider">
+
+  <form method="POST">
+    <!-- Type d'événement -->
+    <div class="form-group">
+      <label for="type_id">Type d'événement</label>
+      <select name="type_id" id="type_id" required>
+        <optgroup label="Bonus">
+          {% for et in event_types if et.direction == '+' %}
+          <option value="{{ et.id }}" data-points="{{ et.points }}" data-direction="{{ et.direction }}"
+                  {% if et.id == event.type_id %}selected{% endif %}>
+            {{ et.label }} (+{{ et.points }} pts)
+          </option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Malus">
+          {% for et in event_types if et.direction == '-' %}
+          <option value="{{ et.id }}" data-points="{{ et.points }}" data-direction="{{ et.direction }}"
+                  {% if et.id == event.type_id %}selected{% endif %}>
+            {{ et.label }} ({{ et.points }} pts)
+          </option>
+          {% endfor %}
+        </optgroup>
+      </select>
+    </div>
+
+    <!-- Points -->
+    <div class="form-group">
+      <label for="points">Points</label>
+      <input type="number" name="points" id="points" value="{{ event.points }}" required>
+      <small class="hint">Modifiez pour ajuster les points attribués.</small>
+    </div>
+
+    <!-- Raison -->
+    <div class="form-group">
+      <label for="raison">Raison / Commentaire</label>
+      <textarea name="raison" id="raison" rows="3" placeholder="Contexte de l'événement...">{{ event.raison or '' }}</textarea>
+    </div>
+
+    <hr class="step-divider">
+
+    <!-- Infos de contexte -->
+    <div style="font-size:13px;color:#777;margin-bottom:16px;">
+      Saisi par <strong>{{ event.created_by }}</strong> le <strong>{{ event.created_at[:16] }}</strong>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+      <a href="{{ url_for('events_list') }}" class="btn btn-secondary">Annuler</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Met à jour les points par défaut quand on change le type
+document.getElementById('type_id').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  document.getElementById('points').value = opt.dataset.points;
+});
+</script>
+{% endblock %}

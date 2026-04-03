@@ -12,11 +12,12 @@
         {% if user.is_tester %}&#9654; Retirer rôle testeur{% else %}&#9654; Marquer comme testeur{% endif %}
       </button>
     </form>
-    <a href="{{ url_for('user_toggle', user_id=user.id) }}"
-       class="btn btn-secondary"
-       onclick="return confirm('Changer le statut de cet utilisateur ?')">
-      {% if user.actif %}Désactiver{% else %}Réactiver{% endif %}
-    </a>
+    <form method="POST" action="{{ url_for('user_toggle', user_id=user.id) }}" style="display:inline"
+          onsubmit="return confirm('Changer le statut de cet utilisateur ?')">
+      <button type="submit" class="btn btn-secondary">
+        {% if user.actif %}Désactiver{% else %}Réactiver{% endif %}
+      </button>
+    </form>
     <a href="{{ url_for('users') }}" class="btn btn-secondary">← Retour</a>
   </div>
 </div>
@@ -127,8 +128,9 @@
         </td>
         <td>
           {% if not ev.annule %}
+          <a href="{{ url_for('event_edit', event_id=ev.id) }}" class="btn btn-sm btn-secondary">Modifier</a>
           <form method="POST" action="{{ url_for('event_cancel', event_id=ev.id) }}"
-                onsubmit="return confirm('Annuler cet événement ?')">
+                onsubmit="return confirm('Annuler cet événement ?')" style="display:inline;">
             <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
           </form>
           {% endif %}

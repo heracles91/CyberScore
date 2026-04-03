@@ -208,6 +208,12 @@
 <div id="leaderboardContent" style="display:none"></div>
 
 <script>
+function esc(str) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(str || ''));
+  return d.innerHTML;
+}
+
 const BADGE_CLASSES = {
   'Expert':   'badge-expert',
   'Gardien':  'badge-gardien',
@@ -225,10 +231,10 @@ function renderPodiumItem(u, rankClass) {
   const isAnon = !u.nom || u.nom.startsWith('Collaborateur');
   return `
     <div class="podium-item ${rankClass}">
-      <div class="podium-avatar">${isAnon ? '#' + u.rang : initials(u.prenom, u.nom)}</div>
-      <div class="podium-name">${u.prenom ? u.prenom + '<br>' : ''}${u.nom}</div>
+      <div class="podium-avatar">${isAnon ? '#' + u.rang : esc(initials(u.prenom, u.nom))}</div>
+      <div class="podium-name">${u.prenom ? esc(u.prenom) + '<br>' : ''}${esc(u.nom)}</div>
       <div class="podium-score">${u.score} pts</div>
-      <div class="podium-niveau lb-badge ${BADGE_CLASSES[u.niveau] || 'badge-debuta'}">${u.niveau}</div>
+      <div class="podium-niveau lb-badge ${BADGE_CLASSES[u.niveau] || 'badge-debuta'}">${esc(u.niveau)}</div>
       <div class="podium-block">${u.rang === 1 ? '🥇' : u.rang === 2 ? '🥈' : '🥉'}</div>
     </div>
   `;
@@ -250,9 +256,9 @@ function render(data) {
     return `
       <div class="lb-row ${isAnon ? 'anon' : ''}">
         <div class="lb-rang">#${u.rang}</div>
-        <div class="lb-avatar">${isAnon ? '?' : initials(u.prenom, u.nom)}</div>
-        <div class="lb-name">${u.prenom ? u.prenom + ' ' : ''}${u.nom}</div>
-        <div class="lb-badge ${BADGE_CLASSES[u.niveau] || 'badge-debuta'}">${u.niveau}</div>
+        <div class="lb-avatar">${isAnon ? '?' : esc(initials(u.prenom, u.nom))}</div>
+        <div class="lb-name">${u.prenom ? esc(u.prenom) + ' ' : ''}${esc(u.nom)}</div>
+        <div class="lb-badge ${BADGE_CLASSES[u.niveau] || 'badge-debuta'}">${esc(u.niveau)}</div>
         <div class="lb-score">${u.score} pts</div>
       </div>
     `;

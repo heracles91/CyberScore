@@ -76,10 +76,11 @@
             {% if ev.annule %}<span class="tag-annule">annulé</span>{% endif %}
           </td>
           <td class="date-cell">{{ ev.created_at[:16] }}</td>
-          <td>
+          <td style="white-space:nowrap;">
             {% if not ev.annule %}
+            <a href="{{ url_for('event_edit', event_id=ev.id) }}" class="btn btn-sm btn-secondary">Modifier</a>
             <form method="POST" action="{{ url_for('event_cancel', event_id=ev.id) }}"
-                  onsubmit="return confirm('Annuler cet événement ?')">
+                  onsubmit="return confirm('Annuler cet événement ?')" style="display:inline;">
               <button type="submit" class="btn btn-sm btn-danger">Annuler</button>
             </form>
             {% endif %}

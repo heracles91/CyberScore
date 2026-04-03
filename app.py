@@ -3,6 +3,7 @@
 
 from flask import (Flask, render_template, request, redirect, url_for,
                    session, flash, jsonify, g, Response)
+from flask_wtf.csrf import CSRFProtect
 from datetime import timedelta, datetime
 import functools
 import re
@@ -18,6 +19,7 @@ import mailer
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=config.SESSION_TIMEOUT_HOURS)
+csrf = CSRFProtect(app)
 
 
 @app.context_processor
@@ -100,7 +102,10 @@ def login():
             session.permanent = True
             session["admin_logged_in"] = True
             session["admin_user"] = user
-            next_url = request.args.get("next", url_for("dashboard"))
+            next_url = request.args.get("next", "")
+            # Protection open redirect : n'accepter que les chemins relatifs internes
+            if not next_url or not next_url.startswith("/") or next_url.startswith("//"):
+                next_url = url_for("dashboard")
             return redirect(next_url)
         error = "Identifiants incorrects."
     return render_template("login.html", error=error)
@@ -186,7 +191,7 @@ def user_detail(user_id):
     return render_template("user_detail.html", user=user, events=events)
 
 
-@app.route("/users/<int:user_id>/toggle")
+@app.route("/users/<int:user_id>/toggle", methods=["POST"])
 @login_required
 def user_toggle(user_id):
     db.toggle_user_actif(user_id)
@@ -293,6 +298,49 @@ def event_add():
                            preselect_user=preselect_user)
 
 
+@app.route("/events/<int:event_id>/edit", methods=["GET", "POST"])
+@login_required
+def event_edit(event_id):
+    event = db.get_event_by_id(event_id)
+    if not event:
+        flash("Événement introuvable.", "error")
+        return redirect(url_for("events_list"))
+    if event["annule"]:
+        flash("Impossible de modifier un événement annulé.", "error")
+        return redirect(url_for("events_list"))
+
+    event_types = db.get_all_event_types()
+
+    if request.method == "POST":
+        new_type_id = request.form.get("type_id", "")
+        new_points  = request.form.get("points", "")
+        new_raison  = request.form.get("raison", "").strip()
+
+        errors = []
+        if not new_type_id:
+            errors.append("Le type d'événement est obligatoire.")
+        try:
+            pts = int(new_points)
+        except (ValueError, TypeError):
+            errors.append("Les points doivent être un entier.")
+            pts = 0
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("event_edit.html", event=event, event_types=event_types)
+
+        ok, msg = models.edit_event(event_id, int(new_type_id), pts, new_raison)
+        if ok:
+            flash(msg, "success")
+            return redirect(url_for("events_list"))
+        else:
+            flash(msg, "error")
+            return render_template("event_edit.html", event=event, event_types=event_types)
+
+    return render_template("event_edit.html", event=event, event_types=event_types)
+
+
 @app.route("/events/cancel/<int:event_id>", methods=["POST"])
 @login_required
 def event_cancel(event_id):
@@ -319,6 +367,7 @@ def api_users_search():
 
 
 @app.route("/api/events/add", methods=["POST"])
+@csrf.exempt
 def api_events_add():
     """
     Endpoint POST JSON pour ajouter un événement.
@@ -776,6 +825,7 @@ def quiz_take(token):
 
 
 @app.route("/quiz/<token>/submit", methods=["POST"])
+@csrf.exempt
 def quiz_submit(token):
     attempt = db.get_quiz_attempt_by_token(token)
     if not attempt or attempt["status"] == "completed":

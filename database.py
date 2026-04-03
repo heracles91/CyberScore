@@ -526,6 +526,19 @@ def annuler_event(event_id):
         conn.close()
 
 
+def update_event(event_id, type_id, points, raison):
+    """Met à jour le type, les points et la raison d'un événement."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE events SET type_id=?, points=?, raison=? WHERE id=?",
+            (type_id, points, raison, event_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def user_has_coffre_mdp(user_id):
     """Vérifie si l'utilisateur a déjà reçu COFFRE_MDP (non annulé)."""
     conn = get_conn()
@@ -902,6 +915,13 @@ def create_test_quiz_attempt(quiz_id, user_id):
     token = _secrets.token_urlsafe(32)
     conn = get_conn()
     try:
+        # Supprimer d'abord les réponses liées aux tentatives de test existantes (FK)
+        old_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM quiz_attempts WHERE quiz_id=? AND user_id=? AND is_test=1",
+            (quiz_id, user_id)
+        ).fetchall()]
+        for aid in old_ids:
+            conn.execute("DELETE FROM quiz_attempt_answers WHERE attempt_id=?", (aid,))
         conn.execute(
             "DELETE FROM quiz_attempts WHERE quiz_id=? AND user_id=? AND is_test=1",
             (quiz_id, user_id)

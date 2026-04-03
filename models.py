@@ -74,6 +74,37 @@ def add_event(user_id, type_id, points_override=None, raison="", created_by="adm
     return True, "Événement enregistré avec succès.", event_id
 
 
+def edit_event(event_id, new_type_id, new_points, new_raison):
+    """
+    Modifie un événement existant (non annulé) :
+    - Met à jour le type, les points et la raison
+    - Recalcule le score de l'utilisateur
+
+    Retourne (ok, message)
+    """
+    event = db.get_event_by_id(event_id)
+    if not event:
+        return False, "Événement introuvable."
+    if event["annule"]:
+        return False, "Impossible de modifier un événement annulé."
+
+    etype = db.get_event_type_by_id(new_type_id)
+    if not etype:
+        return False, "Type d'événement introuvable."
+
+    user_id = event["user_id"]
+
+    # Mise à jour de l'événement
+    db.update_event(event_id, new_type_id, new_points, new_raison)
+
+    # Recalcul du score depuis zéro
+    new_score = db.recalculate_user_score(user_id)
+    new_niveau = calc_niveau(new_score)
+    db.update_user_score(user_id, new_score, new_niveau)
+
+    return True, "Événement modifié. Score recalculé."
+
+
 def cancel_event(event_id, admin_login="admin"):
     """
     Annule un événement :
