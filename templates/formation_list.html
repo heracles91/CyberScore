@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Formations{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Formations cybersécurité <span class="count-badge">{{ formations|length }}</span></h1>
+  <a href="{{ url_for('formation_add') }}" class="btn btn-primary">+ Nouvelle formation</a>
+</div>
+
+{% if formations %}
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Mois</th>
+        <th>Titre</th>
+        <th>Ressources</th>
+        <th>Statut</th>
+        <th>Créée le</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in formations %}
+      <tr>
+        <td>
+          <span class="formation-mois">{{ f.mois }}</span>
+        </td>
+        <td>
+          <a href="{{ url_for('formation_detail', formation_id=f.id) }}">
+            <strong>{{ f.title }}</strong>
+          </a>
+          {% if f.description %}
+          <br><small class="muted">{{ f.description[:80] }}{% if f.description|length > 80 %}…{% endif %}</small>
+          {% endif %}
+        </td>
+        <td>{{ f.nb_resources }} ressource(s)</td>
+        <td>
+          {% if f.actif %}
+            <span class="tag-actif">Publiée</span>
+          {% else %}
+            <span class="tag-annule">Masquée</span>
+          {% endif %}
+        </td>
+        <td class="date-cell">{{ f.created_at[:10] }}</td>
+        <td>
+          <a href="{{ url_for('formation_detail', formation_id=f.id) }}" class="btn btn-sm btn-secondary">Gérer</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <p>Aucune formation créée pour le moment.</p>
+    <a href="{{ url_for('formation_add') }}" class="btn btn-primary">Créer la première formation</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

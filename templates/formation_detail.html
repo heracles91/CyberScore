@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ formation.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ formation.title }}</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('formation_edit', formation_id=formation.id) }}" class="btn btn-secondary">Modifier</a>
+    <form method="POST" action="{{ url_for('formation_toggle', formation_id=formation.id) }}" style="display:inline">
+      <button type="submit" class="btn btn-secondary">
+        {% if formation.actif %}Masquer{% else %}Publier{% endif %}
+      </button>
+    </form>
+    <form method="POST" action="{{ url_for('formation_delete', formation_id=formation.id) }}" style="display:inline"
+          onsubmit="return confirm('Supprimer cette formation et toutes ses ressources ?')">
+      <button type="submit" class="btn btn-danger">Supprimer</button>
+    </form>
+    <a href="{{ url_for('formation_list') }}" class="btn btn-secondary">&larr; Retour</a>
+  </div>
+</div>
+
+<!-- Infos formation -->
+<div class="card mb-3">
+  <div style="display:flex;gap:24px;flex-wrap:wrap;">
+    <div>
+      <strong>Mois :</strong>
+      <span class="formation-mois">{{ formation.mois }}</span>
+    </div>
+    <div>
+      <strong>Statut :</strong>
+      {% if formation.actif %}
+        <span class="tag-actif">Publiée</span>
+      {% else %}
+        <span class="tag-annule">Masquée</span>
+      {% endif %}
+    </div>
+    <div>
+      <strong>Créée par :</strong> {{ formation.created_by }}
+      le {{ formation.created_at[:10] }}
+    </div>
+  </div>
+  {% if formation.description %}
+  <p style="margin-top:12px;color:#555;">{{ formation.description }}</p>
+  {% endif %}
+
+  <div style="margin-top:12px;">
+    <a href="{{ url_for('formations_public') }}" target="_blank" class="link-primary" style="font-size:13px;">
+      Voir la page publique &nearr;
+    </a>
+  </div>
+</div>
+
+<!-- Ressources existantes -->
+<div class="card mb-3">
+  <h2 style="margin:0 0 16px;">Ressources <span class="count-badge">{{ resources|length }}</span></h2>
+
+  {% if resources %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Titre</th>
+        <th>Détail</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resources %}
+      <tr>
+        <td>
+          {% if r.resource_type == 'link' %}
+            <span style="background:#D6EAF8;color:#1E3A5F;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">Lien</span>
+          {% else %}
+            <span style="background:#D5F5E3;color:#145A3B;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">Fichier</span>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ r.title }}</strong>
+          {% if r.description %}
+          <br><small class="muted">{{ r.description }}</small>
+          {% endif %}
+        </td>
+        <td style="font-size:13px;color:#555;max-width:300px;word-break:break-all;">
+          {% if r.resource_type == 'link' %}
+            <a href="{{ r.url }}" target="_blank">{{ r.url[:60] }}{% if r.url|length > 60 %}…{% endif %}</a>
+          {% else %}
+            {{ r.file_name or r.file_path }}
+          {% endif %}
+        </td>
+        <td>
+          <form method="POST"
+                action="{{ url_for('formation_resource_delete', formation_id=formation.id, resource_id=r.id) }}"
+                onsubmit="return confirm('Supprimer cette ressource ?')" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Aucune ressource ajoutée pour le moment.</p>
+  {% endif %}
+</div>
+
+<!-- Ajouter une ressource -->
+<div class="card">
+  <h2 style="margin:0 0 16px;">Ajouter une ressource</h2>
+
+  <!-- Tabs lien / fichier -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button type="button" class="btn btn-sm btn-primary" id="tabLink" onclick="showTab('link')">Ajouter un lien</button>
+    <button type="button" class="btn btn-sm btn-secondary" id="tabFile" onclick="showTab('file')">Uploader un fichier</button>
+  </div>
+
+  <!-- Formulaire lien -->
+  <form method="POST" action="{{ url_for('formation_resource_add', formation_id=formation.id) }}"
+        class="form-stack" id="formLink">
+    <input type="hidden" name="resource_type" value="link">
+    <div class="form-group">
+      <label for="link_title">Titre *</label>
+      <input type="text" name="title" id="link_title" required
+             placeholder="ex: Rediffusion Teams — Mars 2026">
+    </div>
+    <div class="form-group">
+      <label for="link_url">URL *</label>
+      <input type="url" name="url" id="link_url" required
+             placeholder="https://teams.microsoft.com/...">
+      <small class="hint">Lien Teams, SharePoint, YouTube, ou tout autre lien web</small>
+    </div>
+    <div class="form-group">
+      <label for="link_desc">Description <small>(optionnel)</small></label>
+      <input type="text" name="description" id="link_desc"
+             placeholder="Enregistrement de la réunion Teams du 15 mars">
+    </div>
+    <button type="submit" class="btn btn-primary">Ajouter le lien</button>
+  </form>
+
+  <!-- Formulaire fichier -->
+  <form method="POST" action="{{ url_for('formation_resource_add', formation_id=formation.id) }}"
+        enctype="multipart/form-data" class="form-stack" id="formFile" style="display:none;">
+    <input type="hidden" name="resource_type" value="file">
+    <div class="form-group">
+      <label for="file_title">Titre *</label>
+      <input type="text" name="title" id="file_title" required
+             placeholder="ex: Support de présentation — Phishing">
+    </div>
+    <div class="form-group">
+      <label for="file_upload">Fichier *</label>
+      <input type="file" name="file" id="file_upload" required>
+      <small class="hint">Formats acceptés : PDF, PowerPoint, Word, Excel, images, vidéos, ZIP</small>
+    </div>
+    <div class="form-group">
+      <label for="file_desc">Description <small>(optionnel)</small></label>
+      <input type="text" name="description" id="file_desc"
+             placeholder="Présentation PowerPoint utilisée lors de la formation">
+    </div>
+    <button type="submit" class="btn btn-primary">Uploader le fichier</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(tab) {
+  const formLink = document.getElementById('formLink');
+  const formFile = document.getElementById('formFile');
+  const tabLink  = document.getElementById('tabLink');
+  const tabFile  = document.getElementById('tabFile');
+
+  if (tab === 'link') {
+    formLink.style.display = '';
+    formFile.style.display = 'none';
+    tabLink.className = 'btn btn-sm btn-primary';
+    tabFile.className = 'btn btn-sm btn-secondary';
+  } else {
+    formLink.style.display = 'none';
+    formFile.style.display = '';
+    tabLink.className = 'btn btn-sm btn-secondary';
+    tabFile.className = 'btn btn-sm btn-primary';
+  }
+}
+</script>
+{% endblock %}

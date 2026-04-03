@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle formation{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Nouvelle formation</h1>
+  <a href="{{ url_for('formation_list') }}" class="btn btn-secondary">&larr; Retour</a>
+</div>
+
+<div class="card card-medium">
+  <form method="POST" class="form-stack">
+
+    <div class="form-group">
+      <label for="title">Titre de la formation *</label>
+      <input type="text" name="title" id="title" required
+             value="{{ form.get('title', '') }}"
+             placeholder="ex: Sensibilisation au phishing">
+    </div>
+
+    <div class="form-group">
+      <label for="mois">Mois *</label>
+      <input type="month" name="mois" id="mois" required
+             value="{{ form.get('mois', '') }}">
+      <small class="hint">Format : année-mois (ex: 2026-03 pour mars 2026)</small>
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea name="description" id="description" rows="4"
+                placeholder="Résumé du contenu de la formation, objectifs…">{{ form.get('description', '') }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-primary">Créer la formation</button>
+      <a href="{{ url_for('formation_list') }}" class="btn btn-secondary">Annuler</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

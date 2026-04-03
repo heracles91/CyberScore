@@ -47,6 +47,9 @@ modifs.txt
 *.tar.gz
 email_fin_exercice_cyberscore.html
 
+# ── Fichiers uploadés (formations) ───────────────────────────────────────────
+uploads/
+
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 logs/

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Modifier — {{ formation.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Modifier la formation</h1>
+  <a href="{{ url_for('formation_detail', formation_id=formation.id) }}" class="btn btn-secondary">&larr; Retour</a>
+</div>
+
+<div class="card card-medium">
+  <form method="POST" class="form-stack">
+
+    <div class="form-group">
+      <label for="title">Titre *</label>
+      <input type="text" name="title" id="title" required
+             value="{{ formation.title }}">
+    </div>
+
+    <div class="form-group">
+      <label for="mois">Mois *</label>
+      <input type="month" name="mois" id="mois" required
+             value="{{ formation.mois }}">
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea name="description" id="description" rows="4">{{ formation.description or '' }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+      <a href="{{ url_for('formation_detail', formation_id=formation.id) }}" class="btn btn-secondary">Annuler</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

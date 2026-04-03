@@ -11,10 +11,18 @@ import io
 import csv
 import unicodedata
 
+import os
+
 import config
 import database as db
 import models
 import mailer
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
+ALLOWED_EXTENSIONS = {
+    "pdf", "pptx", "ppt", "docx", "doc", "xlsx", "xls",
+    "png", "jpg", "jpeg", "gif", "mp4", "mp3", "zip", "txt",
+}
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -854,6 +862,201 @@ def quiz_result(token):
                            leaderboard_url=config.LEADERBOARD_URL,
                            questions=questions,
                            user_answers=user_answers)
+
+
+# ─── Formations — Admin ──────────────────────────────────────────────────────
+
+@app.route("/formations")
+@login_required
+def formation_list():
+    formations = db.get_all_formations()
+    return render_template("formation_list.html", formations=formations)
+
+
+@app.route("/formations/add", methods=["GET", "POST"])
+@login_required
+def formation_add():
+    if request.method == "POST":
+        title       = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        mois        = request.form.get("mois", "").strip()
+        admin       = session.get("admin_user", "admin")
+
+        errors = []
+        if not title:
+            errors.append("Le titre est obligatoire.")
+        if not mois:
+            errors.append("Le mois est obligatoire.")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("formation_add.html", form=request.form)
+
+        fid = db.create_formation(title, description, mois, admin)
+        flash(f"Formation « {title} » créée.", "success")
+        return redirect(url_for("formation_detail", formation_id=fid))
+
+    return render_template("formation_add.html", form={})
+
+
+@app.route("/formations/<int:formation_id>")
+@login_required
+def formation_detail(formation_id):
+    formation = db.get_formation_by_id(formation_id)
+    if not formation:
+        flash("Formation introuvable.", "error")
+        return redirect(url_for("formation_list"))
+    resources = db.get_formation_resources(formation_id)
+    return render_template("formation_detail.html",
+                           formation=formation, resources=resources)
+
+
+@app.route("/formations/<int:formation_id>/edit", methods=["GET", "POST"])
+@login_required
+def formation_edit(formation_id):
+    formation = db.get_formation_by_id(formation_id)
+    if not formation:
+        flash("Formation introuvable.", "error")
+        return redirect(url_for("formation_list"))
+
+    if request.method == "POST":
+        title       = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        mois        = request.form.get("mois", "").strip()
+
+        errors = []
+        if not title:
+            errors.append("Le titre est obligatoire.")
+        if not mois:
+            errors.append("Le mois est obligatoire.")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+        else:
+            db.update_formation(formation_id, title, description, mois)
+            flash("Formation mise à jour.", "success")
+            return redirect(url_for("formation_detail", formation_id=formation_id))
+
+    return render_template("formation_edit.html", formation=formation)
+
+
+@app.route("/formations/<int:formation_id>/toggle", methods=["POST"])
+@login_required
+def formation_toggle(formation_id):
+    db.toggle_formation_actif(formation_id)
+    return redirect(url_for("formation_detail", formation_id=formation_id))
+
+
+@app.route("/formations/<int:formation_id>/delete", methods=["POST"])
+@login_required
+def formation_delete(formation_id):
+    # Supprimer aussi les fichiers uploadés
+    resources = db.get_formation_resources(formation_id)
+    for r in resources:
+        if r["resource_type"] == "file" and r["file_path"]:
+            fpath = os.path.join(UPLOAD_FOLDER, r["file_path"])
+            if os.path.exists(fpath):
+                os.remove(fpath)
+    db.delete_formation(formation_id)
+    flash("Formation supprimée.", "success")
+    return redirect(url_for("formation_list"))
+
+
+@app.route("/formations/<int:formation_id>/resource/add", methods=["POST"])
+@login_required
+def formation_resource_add(formation_id):
+    formation = db.get_formation_by_id(formation_id)
+    if not formation:
+        flash("Formation introuvable.", "error")
+        return redirect(url_for("formation_list"))
+
+    res_type    = request.form.get("resource_type", "link")
+    title       = request.form.get("title", "").strip()
+    description = request.form.get("description", "").strip()
+    url_val     = request.form.get("url", "").strip()
+
+    if not title:
+        flash("Le titre de la ressource est obligatoire.", "error")
+        return redirect(url_for("formation_detail", formation_id=formation_id))
+
+    if res_type == "link":
+        if not url_val:
+            flash("L'URL est obligatoire pour un lien.", "error")
+            return redirect(url_for("formation_detail", formation_id=formation_id))
+        db.add_formation_resource(formation_id, title, "link",
+                                  url=url_val, description=description)
+        flash(f"Lien « {title} » ajouté.", "success")
+
+    elif res_type == "file":
+        f = request.files.get("file")
+        if not f or not f.filename:
+            flash("Veuillez sélectionner un fichier.", "error")
+            return redirect(url_for("formation_detail", formation_id=formation_id))
+
+        ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            flash(f"Extension « .{ext} » non autorisée.", "error")
+            return redirect(url_for("formation_detail", formation_id=formation_id))
+
+        # Créer le dossier uploads si nécessaire
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+        # Nom de fichier sécurisé et unique
+        from werkzeug.utils import secure_filename
+        import secrets as _secrets
+        safe_name = secure_filename(f.filename)
+        unique_name = f"{_secrets.token_hex(8)}_{safe_name}"
+        f.save(os.path.join(UPLOAD_FOLDER, unique_name))
+
+        db.add_formation_resource(formation_id, title, "file",
+                                  file_path=unique_name, file_name=f.filename,
+                                  description=description)
+        flash(f"Fichier « {title} » uploadé.", "success")
+
+    return redirect(url_for("formation_detail", formation_id=formation_id))
+
+
+@app.route("/formations/<int:formation_id>/resource/<int:resource_id>/delete", methods=["POST"])
+@login_required
+def formation_resource_delete(formation_id, resource_id):
+    res = db.get_formation_resource_by_id(resource_id)
+    if res and res["resource_type"] == "file" and res["file_path"]:
+        fpath = os.path.join(UPLOAD_FOLDER, res["file_path"])
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    db.delete_formation_resource(resource_id)
+    flash("Ressource supprimée.", "success")
+    return redirect(url_for("formation_detail", formation_id=formation_id))
+
+
+# ─── Formations — Public ────────────────────────────────────────────────────
+
+@app.route("/formations/public")
+def formations_public():
+    """Page publique listant les formations et leurs ressources."""
+    formations = db.get_active_formations()
+    # Charger les ressources pour chaque formation
+    for f in formations:
+        f["resources"] = db.get_formation_resources(f["id"])
+    return render_template("formations_public.html",
+                           formations=formations,
+                           company_name=_get_company_name(),
+                           leaderboard_url=config.LEADERBOARD_URL)
+
+
+@app.route("/formations/download/<int:resource_id>")
+def formation_download(resource_id):
+    """Télécharge une ressource fichier."""
+    res = db.get_formation_resource_by_id(resource_id)
+    if not res or res["resource_type"] != "file" or not res["file_path"]:
+        flash("Ressource introuvable.", "error")
+        return redirect(url_for("formations_public"))
+    from flask import send_from_directory
+    return send_from_directory(UPLOAD_FOLDER, res["file_path"],
+                               as_attachment=True,
+                               download_name=res["file_name"] or res["file_path"])
 
 
 # ─── Page règles (publique) ───────────────────────────────────────────────────

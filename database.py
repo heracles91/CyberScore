@@ -185,6 +185,35 @@ def init_db():
             )
         """)
 
+        # ─ Formations ───────────────────────────────────────────────────────────
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS formations (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                title       TEXT    NOT NULL,
+                description TEXT,
+                mois        TEXT    NOT NULL,
+                created_by  TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                actif       INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS formation_resources (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                formation_id  INTEGER NOT NULL REFERENCES formations(id),
+                title         TEXT    NOT NULL,
+                resource_type TEXT    NOT NULL CHECK(resource_type IN ('link','file')),
+                url           TEXT,
+                file_path     TEXT,
+                file_name     TEXT,
+                description   TEXT,
+                ordre         INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+        """)
+
         # ─── Migrations (ajout colonnes si absentes) ─────────────────────────
         for migration_sql in [
             "ALTER TABLE users ADD COLUMN is_tester INTEGER NOT NULL DEFAULT 0",
@@ -1022,5 +1051,150 @@ def get_pending_attempts_with_users(quiz_id):
             WHERE qa.quiz_id=? AND qa.is_test=0 AND qa.status='pending'
         """, (quiz_id,)).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ─── Formations ──────────────────────────────────────────────────────────────
+
+def create_formation(title, description, mois, created_by):
+    """Crée une formation et retourne son id."""
+    conn = get_conn()
+    try:
+        c = conn.execute(
+            "INSERT INTO formations (title, description, mois, created_by) VALUES (?,?,?,?)",
+            (title, description or None, mois, created_by)
+        )
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def update_formation(formation_id, title, description, mois):
+    """Met à jour les métadonnées d'une formation."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE formations SET title=?, description=?, mois=? WHERE id=?",
+            (title, description or None, mois, formation_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_all_formations():
+    """Retourne toutes les formations avec le nombre de ressources."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT f.*, COUNT(fr.id) AS nb_resources
+            FROM formations f
+            LEFT JOIN formation_resources fr ON fr.formation_id = f.id
+            GROUP BY f.id
+            ORDER BY f.mois DESC, f.created_at DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_active_formations():
+    """Retourne les formations actives (page publique)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT f.*, COUNT(fr.id) AS nb_resources
+            FROM formations f
+            LEFT JOIN formation_resources fr ON fr.formation_id = f.id
+            WHERE f.actif=1
+            GROUP BY f.id
+            ORDER BY f.mois DESC, f.created_at DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_formation_by_id(formation_id):
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM formations WHERE id=?", (formation_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def toggle_formation_actif(formation_id):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE formations SET actif=CASE WHEN actif=1 THEN 0 ELSE 1 END WHERE id=?",
+            (formation_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_formation(formation_id):
+    """Supprime une formation et toutes ses ressources."""
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM formation_resources WHERE formation_id=?", (formation_id,))
+        conn.execute("DELETE FROM formations WHERE id=?", (formation_id,))
+        conn.commit()
+        return True, None
+    finally:
+        conn.close()
+
+
+# ─── Ressources de formation ────────────────────────────────────────────────
+
+def add_formation_resource(formation_id, title, resource_type, url=None,
+                           file_path=None, file_name=None, description=None, ordre=0):
+    """Ajoute une ressource à une formation. Retourne son id."""
+    conn = get_conn()
+    try:
+        c = conn.execute(
+            """INSERT INTO formation_resources
+               (formation_id, title, resource_type, url, file_path, file_name, description, ordre)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (formation_id, title, resource_type, url, file_path, file_name, description, ordre)
+        )
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def get_formation_resources(formation_id):
+    """Retourne les ressources d'une formation triées par ordre."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM formation_resources WHERE formation_id=? ORDER BY ordre, id",
+            (formation_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_formation_resource_by_id(resource_id):
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM formation_resources WHERE id=?", (resource_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def delete_formation_resource(resource_id):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM formation_resources WHERE id=?", (resource_id,))
+        conn.commit()
     finally:
         conn.close()
