@@ -2,7 +2,15 @@
 
 import sqlite3
 import config
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+PARIS_TZ = ZoneInfo("Europe/Paris")
+
+
+def now_paris():
+    """Retourne l'heure actuelle à Paris, formatée pour SQLite."""
+    return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 # Types d'événements à pré-charger au premier lancement
 EVENT_TYPES_INIT = [
@@ -395,8 +403,8 @@ def create_user(ad_login, nom, prenom, email):
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO users (ad_login, nom, prenom, email) VALUES (?,?,?,?)",
-            (ad_login.strip().lower(), nom.strip().upper(), prenom.strip(), email.strip().lower())
+            "INSERT INTO users (ad_login, nom, prenom, email, created_at) VALUES (?,?,?,?,?)",
+            (ad_login.strip().lower(), nom.strip().upper(), prenom.strip(), email.strip().lower(), now_paris())
         )
         conn.commit()
         return True, None
@@ -484,8 +492,8 @@ def insert_event(user_id, type_id, points, raison, created_by):
     conn = get_conn()
     try:
         c = conn.execute(
-            "INSERT INTO events (user_id, type_id, points, raison, created_by) VALUES (?,?,?,?,?)",
-            (user_id, type_id, points, raison, created_by)
+            "INSERT INTO events (user_id, type_id, points, raison, created_by, created_at) VALUES (?,?,?,?,?,?)",
+            (user_id, type_id, points, raison, created_by, now_paris())
         )
         conn.commit()
         return c.lastrowid
@@ -652,7 +660,7 @@ def get_user_monthly_bonus(user_id):
     """Retourne la somme des points bonus (direction='+') du mois en cours pour un utilisateur."""
     conn = get_conn()
     try:
-        month_start = datetime.now().strftime("%Y-%m-01")
+        month_start = datetime.now(PARIS_TZ).strftime("%Y-%m-01")
         row = conn.execute("""
             SELECT COALESCE(SUM(e.points), 0) as total
             FROM events e
@@ -669,7 +677,7 @@ def get_inactive_users_last_month():
     """Retourne les utilisateurs actifs sans événement bonus dans le mois en cours."""
     conn = get_conn()
     try:
-        month_start = datetime.now().strftime("%Y-%m-01")
+        month_start = datetime.now(PARIS_TZ).strftime("%Y-%m-01")
         rows = conn.execute("""
             SELECT u.id, u.ad_login, u.nom, u.prenom, u.score_total
             FROM users u
@@ -754,8 +762,8 @@ def update_notification_status(notif_id, status, error_msg=None):
     conn = get_conn()
     try:
         conn.execute(
-            "UPDATE notifications SET status=?, sent_at=datetime('now','localtime'), error_msg=? WHERE id=?",
-            (status, error_msg, notif_id)
+            "UPDATE notifications SET status=?, sent_at=?, error_msg=? WHERE id=?",
+            (status, now_paris(), error_msg, notif_id)
         )
         conn.commit()
     finally:
@@ -780,7 +788,7 @@ def get_leaderboard():
 
 def snapshot_leaderboard():
     """Enregistre un snapshot quotidien du leaderboard."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
     conn = get_conn()
     try:
         # Supprime le snapshot du jour s'il existe déjà
@@ -800,8 +808,7 @@ def snapshot_leaderboard():
 
 def get_yesterday_rank(user_id):
     """Retourne le rang de l'utilisateur hier pour calculer la progression."""
-    from datetime import datetime, timedelta
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(PARIS_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
     conn = get_conn()
     try:
         row = conn.execute(
@@ -817,7 +824,7 @@ def get_yesterday_rank(user_id):
 
 def get_stats_today():
     """Statistiques du jour pour le dashboard."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
     conn = get_conn()
     try:
         nb_events = conn.execute(
@@ -969,7 +976,7 @@ def mark_quiz_attempt_sent(token):
     conn = get_conn()
     try:
         conn.execute(
-            "UPDATE quiz_attempts SET sent_at=datetime('now','localtime') WHERE token=?", (token,)
+            "UPDATE quiz_attempts SET sent_at=? WHERE token=?", (now_paris(), token)
         )
         conn.commit()
     finally:
@@ -981,8 +988,8 @@ def start_quiz_attempt(token):
     conn = get_conn()
     try:
         conn.execute(
-            "UPDATE quiz_attempts SET started_at=datetime('now','localtime') WHERE token=? AND started_at IS NULL",
-            (token,)
+            "UPDATE quiz_attempts SET started_at=? WHERE token=? AND started_at IS NULL",
+            (now_paris(), token)
         )
         conn.commit()
     finally:
@@ -994,10 +1001,10 @@ def complete_quiz_attempt(token, score_pct, nb_correct, nb_total, points_awarded
     try:
         conn.execute("""
             UPDATE quiz_attempts
-            SET status='completed', completed_at=datetime('now','localtime'),
+            SET status='completed', completed_at=?,
                 score_pct=?, nb_correct=?, nb_total=?, points_awarded=?
             WHERE token=?
-        """, (score_pct, nb_correct, nb_total, points_awarded, token))
+        """, (now_paris(), score_pct, nb_correct, nb_total, points_awarded, token))
         conn.commit()
     finally:
         conn.close()
@@ -1164,6 +1171,56 @@ def get_attempt_answers(attempt_id):
         conn.close()
 
 
+def get_quiz_question_stats(quiz_id):
+    """Retourne le taux de réussite par question pour les tentatives réelles complétées.
+    Retourne {question_id: {"nb_attempts": int, "nb_correct": int, "pct": int}}."""
+    conn = get_conn()
+    try:
+        # Tentatives réelles complétées
+        attempts = conn.execute("""
+            SELECT id FROM quiz_attempts
+            WHERE quiz_id=? AND is_test=0 AND status='completed'
+        """, (quiz_id,)).fetchall()
+
+        if not attempts:
+            return {}
+
+        attempt_ids = [a["id"] for a in attempts]
+
+        # Questions du quiz avec leurs bonnes réponses
+        questions = conn.execute(
+            "SELECT id FROM quiz_questions WHERE quiz_id=? ORDER BY ordre", (quiz_id,)
+        ).fetchall()
+
+        result = {}
+        for q in questions:
+            qid = q["id"]
+            correct_ids = {r["id"] for r in conn.execute(
+                "SELECT id FROM quiz_choices WHERE question_id=? AND is_correct=1", (qid,)
+            ).fetchall()}
+
+            # Pour chaque tentative, vérifier si la réponse est correcte
+            nb_correct = 0
+            nb_attempts = 0
+            for aid in attempt_ids:
+                chosen = {r["choice_id"] for r in conn.execute(
+                    "SELECT choice_id FROM quiz_attempt_answers WHERE attempt_id=? AND question_id=?",
+                    (aid, qid)
+                ).fetchall()}
+                # Question considérée comme répondue si au moins un choix sélectionné
+                if chosen or True:  # compter même si pas répondu (= faux)
+                    nb_attempts += 1
+                    if chosen == correct_ids:
+                        nb_correct += 1
+
+            pct = int((nb_correct / nb_attempts) * 100) if nb_attempts > 0 else 0
+            result[qid] = {"nb_attempts": nb_attempts, "nb_correct": nb_correct, "pct": pct}
+
+        return result
+    finally:
+        conn.close()
+
+
 def get_pending_attempts_with_users(quiz_id):
     """Retourne les tentatives pending (non-test, non-complétées) avec infos utilisateur."""
     conn = get_conn()
@@ -1186,8 +1243,8 @@ def create_formation(title, description, mois, created_by):
     conn = get_conn()
     try:
         c = conn.execute(
-            "INSERT INTO formations (title, description, mois, created_by) VALUES (?,?,?,?)",
-            (title, description or None, mois, created_by)
+            "INSERT INTO formations (title, description, mois, created_by, created_at) VALUES (?,?,?,?,?)",
+            (title, description or None, mois, created_by, now_paris())
         )
         conn.commit()
         return c.lastrowid

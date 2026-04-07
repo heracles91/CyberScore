@@ -721,14 +721,16 @@ def quiz_detail(quiz_id):
     if not quiz:
         flash("Quiz introuvable.", "error")
         return redirect(url_for("quiz_list"))
-    questions    = db.get_quiz_questions(quiz_id)
-    results      = db.get_quiz_results(quiz_id, is_test=False)
-    test_results = db.get_quiz_results(quiz_id, is_test=True)
-    nb_pending   = sum(1 for r in results if r["status"] == "pending")
+    questions      = db.get_quiz_questions(quiz_id)
+    results        = db.get_quiz_results(quiz_id, is_test=False)
+    test_results   = db.get_quiz_results(quiz_id, is_test=True)
+    nb_pending     = sum(1 for r in results if r["status"] == "pending")
+    question_stats = db.get_quiz_question_stats(quiz_id)
     return render_template("quiz_detail.html",
                            quiz=quiz, questions=questions,
                            results=results, test_results=test_results,
-                           nb_pending=nb_pending)
+                           nb_pending=nb_pending,
+                           question_stats=question_stats)
 
 
 @app.route("/quizzes/<int:quiz_id>/send", methods=["POST"])

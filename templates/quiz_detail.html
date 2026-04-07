@@ -107,10 +107,19 @@
 <div class="card mt-4">
   <h2 class="card-title">Questions ({{ questions|length }})</h2>
   {% for q in questions %}
+  {% set stats = question_stats.get(q.id) %}
   <div class="quiz-question-preview">
-    <p class="q-label">Q{{ loop.index }}. {{ q.question_text | safe }}
-      {% if q.multiple_answers %}<span class="badge" style="background:#D6EAF8;color:#1E3A5F;font-size:10px;margin-left:8px;">Plusieurs réponses</span>{% endif %}
-    </p>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <p class="q-label" style="flex:1;">Q{{ loop.index }}. {{ q.question_text | safe }}
+        {% if q.multiple_answers %}<span class="badge" style="background:#D6EAF8;color:#1E3A5F;font-size:10px;margin-left:8px;">Plusieurs réponses</span>{% endif %}
+      </p>
+      {% if stats %}
+      <div style="text-align:center;min-width:80px;flex-shrink:0;">
+        <div style="font-size:22px;font-weight:800;{% if stats.pct >= 80 %}color:#1A7F5A{% elif stats.pct >= 50 %}color:#D4850A{% else %}color:#C0392B{% endif %};">{{ stats.pct }}%</div>
+        <div style="font-size:11px;color:#888;">{{ stats.nb_correct }}/{{ stats.nb_attempts }} correct</div>
+      </div>
+      {% endif %}
+    </div>
     <ul class="choices-preview">
       {% for c in q.choices %}
       <li {% if c.is_correct %}class="correct-choice"{% endif %}>
