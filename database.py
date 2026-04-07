@@ -714,6 +714,27 @@ def recalculate_user_score(user_id):
         conn.close()
 
 
+def realign_events_to_current_bareme():
+    """Met à jour les points de chaque événement non annulé
+    selon le barème actuel de son type d'événement.
+    Retourne le nombre d'événements mis à jour."""
+    conn = get_conn()
+    try:
+        updated = conn.execute("""
+            UPDATE events
+            SET points = CASE
+                WHEN (SELECT direction FROM event_types WHERE id = events.type_id) = '+'
+                    THEN ABS((SELECT points FROM event_types WHERE id = events.type_id))
+                ELSE (SELECT points FROM event_types WHERE id = events.type_id)
+            END
+            WHERE annule = 0
+        """)
+        conn.commit()
+        return updated.rowcount
+    finally:
+        conn.close()
+
+
 # ─── Notifications ────────────────────────────────────────────────────────────
 
 def insert_notification(event_id, user_id):

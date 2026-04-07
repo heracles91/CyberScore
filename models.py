@@ -298,7 +298,13 @@ def apply_inactivity_decay():
 
 
 def recalculate_all_users():
-    """Recalcule le score et niveau de tous les utilisateurs. Retourne le nombre traité."""
+    """Réaligne les points des événements sur le barème actuel,
+    puis recalcule le score et niveau de tous les utilisateurs.
+    Retourne le nombre d'utilisateurs traités."""
+    # 1. Mettre à jour les points de chaque événement selon le barème actuel
+    db.realign_events_to_current_bareme()
+
+    # 2. Recalculer le score total de chaque utilisateur
     users = db.get_all_users()
     count = 0
     for u in users:
