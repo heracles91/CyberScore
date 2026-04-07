@@ -500,12 +500,38 @@ def settings():
             db.snapshot_leaderboard()
             flash("Snapshot du leaderboard enregistré.", "success")
 
+        elif action == "scoring_settings":
+            cap_enabled = "1" if request.form.get("monthly_cap_enabled") else "0"
+            cap_pts = request.form.get("monthly_cap_points", "80")
+            decay_en = "1" if request.form.get("decay_enabled") else "0"
+            decay_pts = request.form.get("decay_points", "-10")
+            db.set_setting("monthly_cap_enabled", cap_enabled)
+            db.set_setting("monthly_cap_points", cap_pts)
+            db.set_setting("decay_enabled", decay_en)
+            db.set_setting("decay_points", decay_pts)
+            flash("Paramètres de scoring mis à jour.", "success")
+
+        elif action == "apply_decay":
+            count = models.apply_inactivity_decay()
+            if count > 0:
+                flash(f"Malus inactivité appliqué à {count} utilisateur(s).", "success")
+            else:
+                flash("Aucun utilisateur inactif ce mois, ou le decay est désactivé.", "info")
+
+        elif action == "recalculate_all":
+            count = models.recalculate_all_users()
+            flash(f"Scores et niveaux recalculés pour {count} utilisateur(s).", "success")
+
     event_types = db.get_all_event_types()
     return render_template("settings.html",
                            cfg=config,
                            event_types=event_types,
                            current_company=_get_company_name(),
-                           current_support=_get_support_email())
+                           current_support=_get_support_email(),
+                           monthly_cap_enabled=db.get_setting("monthly_cap_enabled", "0"),
+                           monthly_cap_points=db.get_setting("monthly_cap_points", "80"),
+                           decay_enabled=db.get_setting("decay_enabled", "0"),
+                           decay_points=db.get_setting("decay_points", "-10"))
 
 
 # ─── Types d'événements ────────────────────────────────────────────────────────
@@ -535,17 +561,67 @@ def event_type_add():
     except ValueError:
         errors.append("Les points doivent être un entier.")
 
+    one_shot = 1 if request.form.get("one_shot") else 0
+
     if errors:
         for e in errors:
             flash(e, "error")
     else:
-        ok, err = db.create_event_type(code, label, pts, direction)
+        ok, err = db.create_event_type(code, label, pts, direction, one_shot)
         if ok:
             flash(f"Type d'événement « {label} » créé.", "success")
         else:
             flash(f"Erreur : {err}", "error")
 
     return redirect(url_for("settings") + "#event-types")
+
+
+@app.route("/event-types/<int:type_id>/edit", methods=["GET", "POST"])
+@login_required
+def event_type_edit(type_id):
+    etype = db.get_event_type_by_id(type_id)
+    if not etype:
+        flash("Type d'événement introuvable.", "error")
+        return redirect(url_for("settings") + "#event-types")
+
+    if request.method == "POST":
+        code      = request.form.get("code", "").strip().upper()
+        label     = request.form.get("label", "").strip()
+        points    = request.form.get("points", "0").strip()
+        direction = request.form.get("direction", "+")
+        one_shot  = 1 if request.form.get("one_shot") else 0
+
+        errors = []
+        if not code or not re.match(r'^[A-Z0-9_]+$', code):
+            errors.append("Le code doit être en MAJUSCULES (lettres, chiffres, _).")
+        if not label:
+            errors.append("Le libellé est obligatoire.")
+        try:
+            pts = int(points)
+            if pts == 0:
+                errors.append("Les points ne peuvent pas être 0.")
+            if direction == "+" and pts < 0:
+                pts = abs(pts)
+            elif direction == "-" and pts > 0:
+                pts = -pts
+        except ValueError:
+            errors.append("Les points doivent être un entier.")
+            pts = 0
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("event_type_edit.html", etype=etype)
+
+        ok, err = db.update_event_type(type_id, code, label, pts, direction, one_shot)
+        if ok:
+            flash(f"Type « {label} » mis à jour.", "success")
+            return redirect(url_for("settings") + "#event-types")
+        else:
+            flash(f"Erreur : {err}", "error")
+            return render_template("event_type_edit.html", etype=etype)
+
+    return render_template("event_type_edit.html", etype=etype)
 
 
 @app.route("/event-types/delete/<int:type_id>", methods=["POST"])

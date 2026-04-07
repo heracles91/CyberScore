@@ -6,11 +6,11 @@ import mailer
 
 def calc_niveau(score):
     """Retourne le niveau correspondant au score."""
-    if score >= 600:
+    if score >= 900:
         return "Expert"
-    elif score >= 300:
+    elif score >= 400:
         return "Gardien"
-    elif score >= 100:
+    elif score >= 150:
         return "Vigilant"
     else:
         return "Débutant"
@@ -33,12 +33,21 @@ def add_event(user_id, type_id, points_override=None, raison="", created_by="adm
     if not etype:
         return False, "Type d'événement introuvable.", None
 
-    # Vérification unicité COFFRE_MDP
-    if etype["code"] == "COFFRE_MDP" and db.user_has_coffre_mdp(user_id):
-        return False, "COFFRE_MDP déjà attribué à cet utilisateur.", None
+    # Vérification one-shot (événement unique par utilisateur)
+    if etype.get("one_shot") and db.user_has_one_shot_event(user_id, type_id):
+        return False, f"{etype['code']} déjà attribué à cet utilisateur (événement unique).", None
 
     # Points effectifs
     points = points_override if points_override is not None else etype["points"]
+
+    # Plafond mensuel (bonus uniquement)
+    if etype["direction"] == "+":
+        cap_enabled = db.get_setting("monthly_cap_enabled", "0")
+        if cap_enabled == "1":
+            cap_value = int(db.get_setting("monthly_cap_points", "80"))
+            month_total = db.get_user_monthly_bonus(user_id)
+            if month_total >= cap_value:
+                return False, f"Plafond mensuel atteint ({cap_value} pts). Aucun point bonus ajouté ce mois.", None
 
     # Calcul nouveau score
     score_avant = user["score_total"]
@@ -260,6 +269,44 @@ def send_quiz_reminders(quiz_id, admin_login):
             errors += 1
 
     return sent, errors
+
+
+def apply_inactivity_decay():
+    """
+    Applique un malus d'inactivité aux utilisateurs sans événement bonus
+    dans le mois en cours. Retourne le nombre d'utilisateurs affectés.
+    """
+    decay_enabled = db.get_setting("decay_enabled", "0")
+    if decay_enabled != "1":
+        return 0
+
+    decay_points = int(db.get_setting("decay_points", "-10"))
+    decay_type = db.get_event_type_by_code("INACTIVITE")
+    if not decay_type:
+        return 0
+
+    inactive_users = db.get_inactive_users_last_month()
+    count = 0
+    for user in inactive_users:
+        db.insert_event(user["id"], decay_type["id"], decay_points,
+                        "Malus inactivité (aucun bonus ce mois)", "system_decay")
+        new_score = db.recalculate_user_score(user["id"])
+        new_niveau = calc_niveau(new_score)
+        db.update_user_score(user["id"], new_score, new_niveau)
+        count += 1
+    return count
+
+
+def recalculate_all_users():
+    """Recalcule le score et niveau de tous les utilisateurs. Retourne le nombre traité."""
+    users = db.get_all_users()
+    count = 0
+    for u in users:
+        new_score = db.recalculate_user_score(u["id"])
+        new_niveau = calc_niveau(new_score)
+        db.update_user_score(u["id"], new_score, new_niveau)
+        count += 1
+    return count
 
 
 def get_leaderboard_with_progression():

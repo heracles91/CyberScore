@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Modifier le type « {{ etype.code }} »{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Modifier le type d'événement</h1>
+  <a href="{{ url_for('settings') }}#event-types" class="btn btn-secondary">&larr; Retour</a>
+</div>
+
+<div class="card card-medium">
+  <form method="POST" class="form-stack">
+
+    <div class="form-group">
+      <label for="code">Code *</label>
+      <input type="text" name="code" id="code" required
+             value="{{ etype.code }}"
+             pattern="[A-Z0-9_]+"
+             title="Majuscules, chiffres et _ uniquement">
+      <small class="hint">Ex : QUIZ_AVANCE</small>
+    </div>
+
+    <div class="form-group">
+      <label for="label">Libellé *</label>
+      <input type="text" name="label" id="label" required
+             value="{{ etype.label }}">
+    </div>
+
+    <div class="form-group">
+      <label for="direction">Direction</label>
+      <select name="direction" id="direction">
+        <option value="+" {% if etype.direction == '+' %}selected{% endif %}>+ Bonus</option>
+        <option value="-" {% if etype.direction == '-' %}selected{% endif %}>- Malus</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="points">Points *</label>
+      <input type="number" name="points" id="points" required
+             value="{{ etype.points|abs }}" min="1">
+      <small class="hint">Valeur positive (le signe est appliqué automatiquement selon la direction)</small>
+    </div>
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="one_shot" value="1"
+               {% if etype.one_shot %}checked{% endif %}>
+        Événement unique (one-shot) — limité à 1 fois par utilisateur
+      </label>
+    </div>
+
+    <hr class="step-divider">
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+      <a href="{{ url_for('settings') }}#event-types" class="btn btn-secondary">Annuler</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-uppercase du code
+document.getElementById('code').addEventListener('input', function() {
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+});
+</script>
+{% endblock %}

@@ -96,12 +96,79 @@
 
 </div>
 
+<!-- ─── Plafond mensuel & Inactivité ─────────────────────────────────────────── -->
+<div class="card mt-4" id="scoring">
+  <h2 class="card-title">Scoring — Plafond mensuel & Inactivité</h2>
+  <form method="POST" class="form-stack">
+    <input type="hidden" name="action" value="scoring_settings">
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="monthly_cap_enabled" value="1"
+               {% if monthly_cap_enabled == '1' %}checked{% endif %}>
+        Activer le plafond mensuel de points bonus
+      </label>
+    </div>
+    <div class="form-group">
+      <label for="monthly_cap_points">Plafond (points/mois)</label>
+      <input type="number" name="monthly_cap_points" id="monthly_cap_points"
+             value="{{ monthly_cap_points }}" min="1" style="max-width:120px;">
+      <small class="hint">Au-delà de ce seuil, les bonus du mois sont refusés.</small>
+    </div>
+
+    <hr class="step-divider">
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="decay_enabled" value="1"
+               {% if decay_enabled == '1' %}checked{% endif %}>
+        Activer le malus d'inactivité mensuelle
+      </label>
+    </div>
+    <div class="form-group">
+      <label for="decay_points">Points de malus inactivité</label>
+      <input type="number" name="decay_points" id="decay_points"
+             value="{{ decay_points }}" max="-1" style="max-width:120px;">
+      <small class="hint">Points retirés aux utilisateurs sans bonus ce mois (valeur négative).</small>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+
+  <hr class="step-divider">
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+    <form method="POST" style="display:inline;">
+      <input type="hidden" name="action" value="apply_decay">
+      <button type="submit" class="btn btn-secondary"
+              onclick="return confirm('Appliquer le malus d\'inactivité aux utilisateurs sans bonus ce mois ?')">
+        Appliquer le malus d'inactivité
+      </button>
+    </form>
+
+    <form method="POST" style="display:inline;">
+      <input type="hidden" name="action" value="recalculate_all">
+      <button type="submit" class="btn btn-secondary"
+              onclick="return confirm('Recalculer le score et le niveau de tous les utilisateurs ?')">
+        Recalculer tous les scores
+      </button>
+    </form>
+  </div>
+  <p class="settings-note" style="margin-top:8px;">
+    Le recalcul met à jour les niveaux de tous les utilisateurs selon les seuils actuels.
+  </p>
+</div>
+
 <!-- ─── Types d'événements ──────────────────────────────────────────────────── -->
 <div class="card mt-4" id="event-types">
   <div class="card-title-row">
     <h2 class="card-title">Types d'événements</h2>
     <button type="button" class="btn btn-primary btn-sm" id="toggleAddForm">+ Ajouter un type</button>
   </div>
+
+  <p class="hint" style="margin-bottom:12px;">Cliquez sur une ligne pour modifier le type d'événement.</p>
 
   <!-- Formulaire ajout (masqué par défaut) -->
   <div id="addEventTypeForm" class="add-etype-form hidden">
@@ -128,6 +195,12 @@
         <input type="number" name="points" id="pointsInput" placeholder="20" min="1" required>
         <small class="hint" id="pointsHint">Valeur positive (le signe est appliqué automatiquement)</small>
       </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="one_shot" value="1">
+          One-shot (1 seule fois par utilisateur)
+        </label>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Créer</button>
         <button type="button" class="btn btn-secondary" id="cancelAdd">Annuler</button>
@@ -139,18 +212,19 @@
   <div class="etype-columns">
     <!-- Bonus -->
     <div>
-      <h3 class="event-group-title bonus-title">✅ Bonus</h3>
+      <h3 class="event-group-title bonus-title">+ Bonus</h3>
       <table class="table">
         <thead>
-          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th></tr>
+          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th><th></th></tr>
         </thead>
         <tbody>
           {% for et in event_types if et.direction == '+' %}
-          <tr>
+          <tr style="cursor:pointer" onclick="window.location='{{ url_for('event_type_edit', type_id=et.id) }}'">
             <td><code>{{ et.code }}</code></td>
             <td>{{ et.label }}</td>
             <td class="pts-pos">+{{ et.points }}</td>
-            <td>
+            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %}</td>
+            <td onclick="event.stopPropagation()">
               <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
                     onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">
                 <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
@@ -164,18 +238,19 @@
 
     <!-- Malus -->
     <div>
-      <h3 class="event-group-title malus-title">⚠️ Malus</h3>
+      <h3 class="event-group-title malus-title">- Malus</h3>
       <table class="table">
         <thead>
-          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th></tr>
+          <tr><th>Code</th><th>Libellé</th><th>Pts</th><th></th><th></th></tr>
         </thead>
         <tbody>
           {% for et in event_types if et.direction == '-' %}
-          <tr>
+          <tr style="cursor:pointer" onclick="window.location='{{ url_for('event_type_edit', type_id=et.id) }}'">
             <td><code>{{ et.code }}</code></td>
             <td>{{ et.label }}</td>
             <td class="pts-neg">{{ et.points }}</td>
-            <td>
+            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %}</td>
+            <td onclick="event.stopPropagation()">
               <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
                     onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">
                 <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
@@ -197,10 +272,10 @@
       <tr><th>Niveau</th><th>Score minimum</th><th>Score maximum</th><th>Badge</th></tr>
     </thead>
     <tbody>
-      <tr><td>Débutant</td><td>0</td><td>99</td><td><span class="badge badge-debuta">Débutant</span></td></tr>
-      <tr><td>Vigilant</td><td>100</td><td>299</td><td><span class="badge badge-vigilant">Vigilant</span></td></tr>
-      <tr><td>Gardien</td><td>300</td><td>599</td><td><span class="badge badge-gardien">Gardien</span></td></tr>
-      <tr><td>Expert</td><td>600</td><td>∞</td><td><span class="badge badge-expert">Expert</span></td></tr>
+      <tr><td>Débutant</td><td>0</td><td>149</td><td><span class="badge badge-debuta">Débutant</span></td></tr>
+      <tr><td>Vigilant</td><td>150</td><td>399</td><td><span class="badge badge-vigilant">Vigilant</span></td></tr>
+      <tr><td>Gardien</td><td>400</td><td>899</td><td><span class="badge badge-gardien">Gardien</span></td></tr>
+      <tr><td>Expert</td><td>900</td><td>+&infin;</td><td><span class="badge badge-expert">Expert</span></td></tr>
     </tbody>
   </table>
 </div>
@@ -219,7 +294,7 @@ document.getElementById('cancelAdd').addEventListener('click', function() {
 });
 
 // Auto-uppercase du code
-document.querySelector('input[name="code"]').addEventListener('input', function() {
+document.querySelector('#addEventTypeForm input[name="code"]').addEventListener('input', function() {
   this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
 });
 

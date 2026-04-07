@@ -6,22 +6,27 @@ from datetime import datetime
 
 # Types d'événements à pré-charger au premier lancement
 EVENT_TYPES_INIT = [
-    # code, label, points, direction, email_subject
-    ("MAIL_SUSPECT",     "Signalement mail suspect",                    15,  "+"),
-    ("MAIL_CONFIRME",    "Mail malveillant confirmé (bonus)",            25,  "+"),
-    ("PHISHING_RATE",    "Phishing simulé non cliqué",                   20,  "+"),
-    ("QUIZ_REUSSI",      "Quiz cybersécurité réussi (>80%)",             30,  "+"),
-    ("PORTAIL_SI",       "Demande via portail SI",                       10,  "+"),
-    ("COFFRE_MDP",       "Preuve gestionnaire de mots de passe",         40,  "+"),
-    ("FORMATION",        "Participation à une formation",                 50,  "+"),
-    ("PARRAINAGE",       "Parrainage d'un collègue",                     20,  "+"),
-    ("SESSION_OUVERTE",  "Session Windows déverrouillée",               -20,  "-"),
-    ("PHISHING_CLIC",    "Clic sur lien phishing simulé",               -30,  "-"),
-    ("PHISHING_CREDS",   "Identifiants saisis sur phishing simulé",     -50,  "-"),
-    ("MDP_EXPIRE",       "Mot de passe AD expiré >48h",                 -15,  "-"),
-    ("COMPTE_VERROUILLE","Compte AD verrouillé (tentatives échouées)",  -10,  "-"),
-    ("SESSION_NUIT",     "Session active nuit/weekend",                 -10,  "-"),
-    ("LOGICIEL_HORS_SI", "Logiciel installé hors processus SI",         -25,  "-"),
+    # code, label, points, direction, one_shot
+    ("MAIL_SUSPECT",            "Signalement mail suspect",                    10,  "+", 0),
+    ("MAIL_CONFIRME",           "Mail malveillant confirmé (bonus)",           15,  "+", 0),
+    ("PHISHING_RATE",           "Phishing simulé non cliqué",                 10,  "+", 0),
+    ("QUIZ_REUSSI",             "Quiz cybersécurité réussi (>80%)",           15,  "+", 0),
+    ("PORTAIL_SI",              "Demande via portail SI",                     10,  "+", 0),
+    ("COFFRE_MDP",              "Preuve gestionnaire de mots de passe",       25,  "+", 1),
+    ("FORMATION",               "Participation à une formation",              25,  "+", 0),
+    ("PARRAINAGE",              "Parrainage d'un collègue",                   20,  "+", 0),
+    ("MFA",                     "Activation authentification multi-facteurs", 25,  "+", 1),
+    ("INCIDENT_CRITIQUE",       "Détection incident critique",                50,  "+", 0),
+    ("VULN_INTERNE",            "Signalement vulnérabilité interne validée",  40,  "+", 0),
+    ("COMPORTEMENT_EXEMPLAIRE", "Comportement exemplaire validé SI",          30,  "+", 0),
+    ("SESSION_OUVERTE",         "Session Windows déverrouillée",             -20,  "-", 0),
+    ("PHISHING_CLIC",           "Clic sur lien phishing simulé",             -30,  "-", 0),
+    ("PHISHING_CREDS",          "Identifiants saisis sur phishing simulé",   -50,  "-", 0),
+    ("MDP_EXPIRE",              "Mot de passe AD expiré >48h",               -15,  "-", 0),
+    ("COMPTE_VERROUILLE",       "Compte AD verrouillé (tentatives échouées)",-10,  "-", 0),
+    ("SESSION_NUIT",            "Session active nuit/weekend",               -10,  "-", 0),
+    ("LOGICIEL_HORS_SI",        "Logiciel installé hors processus SI",       -25,  "-", 0),
+    ("INACTIVITE",              "Malus inactivité mensuelle",                -10,  "-", 0),
 ]
 
 
@@ -72,7 +77,8 @@ def init_db():
                 points         INTEGER NOT NULL,
                 direction      TEXT    NOT NULL CHECK(direction IN ('+','-')),
                 email_subject  TEXT,
-                email_template TEXT    NOT NULL DEFAULT 'event_notification.html'
+                email_template TEXT    NOT NULL DEFAULT 'event_notification.html',
+                one_shot       INTEGER NOT NULL DEFAULT 0
             )
         """)
 
@@ -117,11 +123,11 @@ def init_db():
         # Pré-chargement des types d'événements (si table vide)
         c.execute("SELECT COUNT(*) FROM event_types")
         if c.fetchone()[0] == 0:
-            for code, label, points, direction in EVENT_TYPES_INIT:
+            for code, label, points, direction, one_shot in EVENT_TYPES_INIT:
                 sujet = f"CyberScore — {label}"
                 c.execute(
-                    "INSERT INTO event_types (code, label, points, direction, email_subject) VALUES (?,?,?,?,?)",
-                    (code, label, points, direction, sujet)
+                    "INSERT INTO event_types (code, label, points, direction, email_subject, one_shot) VALUES (?,?,?,?,?,?)",
+                    (code, label, points, direction, sujet, one_shot)
                 )
 
         # ─ Quiz ─────────────────────────────────────────────────────────────────
@@ -219,11 +225,38 @@ def init_db():
             "ALTER TABLE users ADD COLUMN is_tester INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE quiz_attempts ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE quiz_questions ADD COLUMN multiple_answers INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE event_types ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 c.execute(migration_sql)
             except sqlite3.OperationalError:
                 pass  # Colonne déjà présente
+
+        # ─── Migrations : nouveaux types d'événements (BDD existantes) ───────
+        for code, label, points, direction, one_shot in EVENT_TYPES_INIT:
+            try:
+                sujet = f"CyberScore — {label}"
+                c.execute(
+                    "INSERT OR IGNORE INTO event_types (code, label, points, direction, email_subject, one_shot) VALUES (?,?,?,?,?,?)",
+                    (code, label, points, direction, sujet, one_shot)
+                )
+            except sqlite3.OperationalError:
+                pass
+
+        # Marquer les types one-shot existants
+        for code in ("COFFRE_MDP", "MFA"):
+            c.execute("UPDATE event_types SET one_shot=1 WHERE code=? AND one_shot=0", (code,))
+
+        # ─── Paramètres de scoring par défaut ────────────────────────────────
+        for key, val in [
+            ("monthly_cap_enabled", "1"),
+            ("monthly_cap_points", "80"),
+            ("decay_enabled", "0"),
+            ("decay_points", "-10"),
+        ]:
+            existing = c.execute("SELECT 1 FROM settings WHERE key=?", (key,)).fetchone()
+            if not existing:
+                c.execute("INSERT INTO settings (key, value) VALUES (?,?)", (key, val))
 
         conn.commit()
         print("[DB] Base de données initialisée.")
@@ -255,14 +288,14 @@ def set_setting(key, value):
 
 # ─── Gestion des types d'événements ──────────────────────────────────────────
 
-def create_event_type(code, label, points, direction):
+def create_event_type(code, label, points, direction, one_shot=0):
     """Crée un nouveau type d'événement. Retourne (ok, error_msg)."""
     conn = get_conn()
     try:
         subject = f"CyberScore — {label}"
         conn.execute(
-            "INSERT INTO event_types (code, label, points, direction, email_subject) VALUES (?,?,?,?,?)",
-            (code.strip().upper(), label.strip(), int(points), direction, subject)
+            "INSERT INTO event_types (code, label, points, direction, email_subject, one_shot) VALUES (?,?,?,?,?,?)",
+            (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot))
         )
         conn.commit()
         return True, None
@@ -289,6 +322,26 @@ def delete_event_type(type_id):
         conn.execute("DELETE FROM event_types WHERE id=?", (type_id,))
         conn.commit()
         return True, None
+    finally:
+        conn.close()
+
+
+def update_event_type(type_id, code, label, points, direction, one_shot):
+    """Met à jour un type d'événement. Retourne (ok, error_msg)."""
+    conn = get_conn()
+    try:
+        subject = f"CyberScore — {label}"
+        conn.execute("""
+            UPDATE event_types
+            SET code=?, label=?, points=?, direction=?, email_subject=?, one_shot=?
+            WHERE id=?
+        """, (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot), type_id))
+        conn.commit()
+        return True, None
+    except sqlite3.IntegrityError:
+        return False, f"Le code '{code}' existe déjà pour un autre type."
+    except Exception as e:
+        return False, str(e)
     finally:
         conn.close()
 
@@ -569,7 +622,7 @@ def update_event(event_id, type_id, points, raison):
 
 
 def user_has_coffre_mdp(user_id):
-    """Vérifie si l'utilisateur a déjà reçu COFFRE_MDP (non annulé)."""
+    """Vérifie si l'utilisateur a déjà reçu COFFRE_MDP (non annulé). Déprécié, utiliser user_has_one_shot_event."""
     conn = get_conn()
     try:
         row = conn.execute("""
@@ -578,6 +631,56 @@ def user_has_coffre_mdp(user_id):
             WHERE e.user_id=? AND et.code='COFFRE_MDP' AND e.annule=0
         """, (user_id,)).fetchone()
         return row is not None
+    finally:
+        conn.close()
+
+
+def user_has_one_shot_event(user_id, type_id):
+    """Vérifie si l'utilisateur a déjà un événement non annulé de ce type."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id FROM events WHERE user_id=? AND type_id=? AND annule=0",
+            (user_id, type_id)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_user_monthly_bonus(user_id):
+    """Retourne la somme des points bonus (direction='+') du mois en cours pour un utilisateur."""
+    conn = get_conn()
+    try:
+        month_start = datetime.now().strftime("%Y-%m-01")
+        row = conn.execute("""
+            SELECT COALESCE(SUM(e.points), 0) as total
+            FROM events e
+            JOIN event_types et ON et.id = e.type_id
+            WHERE e.user_id=? AND e.annule=0 AND et.direction='+'
+              AND e.created_at >= ?
+        """, (user_id, month_start)).fetchone()
+        return row["total"]
+    finally:
+        conn.close()
+
+
+def get_inactive_users_last_month():
+    """Retourne les utilisateurs actifs sans événement bonus dans le mois en cours."""
+    conn = get_conn()
+    try:
+        month_start = datetime.now().strftime("%Y-%m-01")
+        rows = conn.execute("""
+            SELECT u.id, u.ad_login, u.nom, u.prenom, u.score_total
+            FROM users u
+            WHERE u.actif=1 AND u.is_tester=0
+              AND u.id NOT IN (
+                  SELECT DISTINCT e.user_id FROM events e
+                  JOIN event_types et ON et.id = e.type_id
+                  WHERE e.annule=0 AND et.direction='+' AND e.created_at >= ?
+              )
+        """, (month_start,)).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
