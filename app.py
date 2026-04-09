@@ -896,10 +896,25 @@ def quiz_take(token):
                                company_name=_get_company_name()), 410
 
     if quiz["date_limite"]:
-        from datetime import date
-        if date.today().isoformat() > quiz["date_limite"]:
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+        if _dt.now(_ZI("Europe/Paris")).strftime("%Y-%m-%d") > quiz["date_limite"]:
             db.complete_quiz_attempt(token, 0, 0, 0, 0)
             return render_template("quiz_invalid.html", msg="Ce quiz est expiré.",
+                                   company_name=_get_company_name()), 410
+
+    # Anti-triche : 30 min max après ouverture du quiz
+    QUIZ_TIMEOUT_MINUTES = 30
+    if attempt["started_at"]:
+        from datetime import datetime as _dt2
+        started = _dt2.strptime(attempt["started_at"], "%Y-%m-%d %H:%M:%S")
+        from zoneinfo import ZoneInfo as _ZI2
+        now = _dt2.now(_ZI2("Europe/Paris")).replace(tzinfo=None)
+        elapsed = (now - started).total_seconds() / 60
+        if elapsed > QUIZ_TIMEOUT_MINUTES:
+            db.complete_quiz_attempt(token, 0, 0, 0, 0)
+            return render_template("quiz_invalid.html",
+                                   msg="Temps écoulé — vous avez dépassé les 30 minutes.",
                                    company_name=_get_company_name()), 410
 
     db.start_quiz_attempt(token)
@@ -916,6 +931,19 @@ def quiz_submit(token):
     attempt = db.get_quiz_attempt_by_token(token)
     if not attempt or attempt["status"] == "completed":
         return redirect(url_for("quiz_result", token=token))
+
+    # Anti-triche : bloquer la soumission après 30 min
+    QUIZ_TIMEOUT_MINUTES = 30
+    if attempt.get("started_at"):
+        from datetime import datetime as _dt3
+        from zoneinfo import ZoneInfo as _ZI3
+        started = _dt3.strptime(attempt["started_at"], "%Y-%m-%d %H:%M:%S")
+        now = _dt3.now(_ZI3("Europe/Paris")).replace(tzinfo=None)
+        if (now - started).total_seconds() / 60 > QUIZ_TIMEOUT_MINUTES:
+            db.complete_quiz_attempt(token, 0, 0, 0, 0)
+            return render_template("quiz_invalid.html",
+                                   msg="Temps écoulé — vous avez dépassé les 30 minutes.",
+                                   company_name=_get_company_name()), 410
 
     answers = {key[2:]: request.form.getlist(key) for key in request.form if key.startswith("q_")}
     result  = models.submit_quiz(token, answers)

@@ -862,8 +862,8 @@ def create_quiz(title, description, date_limite, seuil_reussite, created_by):
     conn = get_conn()
     try:
         c = conn.execute(
-            "INSERT INTO quizzes (title, description, date_limite, seuil_reussite, created_by) VALUES (?,?,?,?,?)",
-            (title, description or None, date_limite or None, int(seuil_reussite), created_by)
+            "INSERT INTO quizzes (title, description, date_limite, seuil_reussite, created_by, created_at) VALUES (?,?,?,?,?,?)",
+            (title, description or None, date_limite or None, int(seuil_reussite), created_by, now_paris())
         )
         conn.commit()
         return c.lastrowid
@@ -1340,9 +1340,9 @@ def add_formation_resource(formation_id, title, resource_type, url=None,
     try:
         c = conn.execute(
             """INSERT INTO formation_resources
-               (formation_id, title, resource_type, url, file_path, file_name, description, ordre)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (formation_id, title, resource_type, url, file_path, file_name, description, ordre)
+               (formation_id, title, resource_type, url, file_path, file_name, description, ordre, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (formation_id, title, resource_type, url, file_path, file_name, description, ordre, now_paris())
         )
         conn.commit()
         return c.lastrowid
