@@ -228,6 +228,38 @@ def init_db():
             )
         """)
 
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_pc (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_cap2i  TEXT NOT NULL,
+                ad_login  TEXT,
+                nom_prenom TEXT,
+                service   TEXT,
+                ip        TEXT,
+                actif     INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS session_reports (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id           INTEGER NOT NULL REFERENCES users(id),
+                reporter_name     TEXT,
+                reporter_ip       TEXT,
+                reporter_hostname TEXT,
+                reporter_mac      TEXT,
+                inventory_match   TEXT NOT NULL DEFAULT 'unknown'
+                                  CHECK(inventory_match IN ('yes','no','unknown')),
+                inventory_note    TEXT,
+                status            TEXT NOT NULL DEFAULT 'pending'
+                                  CHECK(status IN ('pending','approved','rejected')),
+                reviewed_by       TEXT,
+                reviewed_at       TEXT,
+                admin_note        TEXT,
+                created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+        """)
+
         # ─── Migrations (ajout colonnes si absentes) ─────────────────────────
         for migration_sql in [
             "ALTER TABLE users ADD COLUMN is_tester INTEGER NOT NULL DEFAULT 0",
@@ -290,10 +322,154 @@ def set_setting(key, value):
     conn = get_conn()
     try:
         conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, value))
+
+        # ─── Inventaire PC (pré-chargement si table vide) ────────────────────
+        c.execute("SELECT COUNT(*) FROM inventory_pc")
+        if c.fetchone()[0] == 0:
+            for id_cap2i, ad_login, nom_prenom, service, ip in [('DESKTOP-4R1MV24', 'PATFI', 'Filipe FONSECA', 'Achats - Logistique', '192.168.1.67'), ('GBROSSARD', 'BROGE', 'Gerard BROSSARD', 'Commercial', '192.168.1.134'), ('LT-23', 'MONPA', 'Pascal MONCHY', 'Etudes & Projets', '192.168.1.87'), ('LT-24', 'JUILO', 'Louis JUILLAC', 'Direction technique', '192.168.1.92'), ('LT-25', 'RIDVI', 'Vincent RIDARCH', 'Etudes & Projets', '192.168.1.135'), ('LT-26', 'SABER', 'Erik SABATIER', 'DAF', '192.168.1.133'), ('LT-28', 'HENBR', 'Bruno HENRIQUES', 'Commercial', '192.168.1.102'), ('LT-32', 'FEGCH', 'Chloe FEGER', 'Commercial', '192.168.1.110'), ('LT-38', 'DINER', 'Eric DINGA', 'Service Apres Vente', None), ('LT-39', 'PELNA', 'Nathalie PELLEN', 'Commercial', '192.168.11.6'), ('LT-46', 'SOUPA', 'Patrice SOULIER', 'Direction technique', '192.168.1.71'), ('LT-49', 'GRAJE', 'Jean-Baptiste GRATADOUR', 'Etudes & Projets', '192.168.1.85'), ('LT-50', 'BETJA', 'Jawad BETTAHAR', 'Qualite', '192.168.1.52'), ('LT-51', 'PENST', 'Stephanie PENNECE', 'Ressources Humaines', '192.168.1.130'), ('LT-53', 'CABINE', "Cabine d'essais", "Cabine d'essais", '192.168.1.109'), ('LT-54', 'DELAL', 'Alexis DELEUZE', 'Achats - Logistique', '192.168.1.66'), ('LT-55', 'THUDA', 'David THUILIER', 'Fabrication', '192.168.1.70'), ('LT-59', 'SOUVI', 'Vivien SOULIER', "Cabine d'essais", '192.168.1.65'), ('LT-60', 'DINER', 'Eric DINGA', 'Service Apres Vente', '192.168.1.71'), ('LT-61', 'ESCKE', 'Kevin ESCODA', 'Qualite', None), ('LT-63', 'ZEBDA', 'David ZERBIB', 'Achats - Logistique', '192.168.1.63'), ('LT-64', 'BENAH', 'Ahmed BENMANSOUR', 'Service Apres Vente', '192.168.1.73'), ('LT-65', 'SANCE', 'Cedric SANZEL', 'Etudes & Projets', '192.168.1.124'), ('LT-66', 'CISMA', 'Matt CISAR', 'Etudes & Projets', '192.168.1.107'), ('LT-67', 'CRILA', 'Laetitia CRISTINO', 'Achats - Logistique', None), ('LT-68', 'BRASA', 'Sahar BRAHIM', 'Qualite', '192.168.1.102'), ('LT-69', 'TOUSO', 'Sokhna TOUNKARA', 'Etudes & Projets', '192.168.1.98'), ('LT-70', 'LAPLE', 'Leo LAPORTE', 'Etudes & Projets', '192.168.1.138'), ('LT-71', 'PALOL', 'Olivier PALTA', 'Etudes & Projets', '192.168.11.2'), ('LT-72', 'NEUAR', 'Arthur NEUMAN', 'Methodes & Industrialisation', '192.168.1.83'), ('LT-73', 'DAOFA', 'Farouk DAOUD', 'Commercial', '192.168.1.57'), ('LT-74', 'KAMKE', 'Kevin KAMENI DOUDIA', "Systeme d'Information", '192.168.56.1'), ('LT-75', 'SOISA', 'Samuel SOIROT', 'Service Apres Vente', '192.168.1.99'), ('LT-76', 'KALHU', 'Hugo KALNIN', 'Etudes & Projets', '192.168.1.41'), ('LT-80', 'MOUDA', 'David MOULENGUI', "Cabine d'essais", '192.168.1.82'), ('LT-81', 'BLUET', 'Ethan BLUZAT', 'ADV', '192.168.1.86'), ('LT-84', 'ESCKE', 'Kevin ESCODA', 'Qualite', '192.168.1.103'), ('LT-86', 'CRILA', 'Laetitia CRISTINO', 'Achats - Logistique', '192.168.1.93'), ('LTP-50', 'ALLPA', 'Paul ALLAIS', 'Etudes & Projets', '192.168.1.135'), ('MARPH', 'SOUNI', 'Nicolas SOULIER', 'Etudes & Projets', None), ('ST-20', 'ALLPA', 'Paul ALLAIS', 'Etudes & Projets', None), ('ST-21', 'GRABE', 'Benjamin GRANGER', 'Etudes & Projets', None), ('ST-22', 'PROD', 'Pointage equipe', 'Fabrication', '192.168.1.112')]:
+                c.execute(
+                    "INSERT INTO inventory_pc (id_cap2i, ad_login, nom_prenom, service, ip) VALUES (?,?,?,?,?)",
+                    (id_cap2i, ad_login, nom_prenom, service, ip)
+                )
+
         conn.commit()
     finally:
         conn.close()
 
+
+
+# ─── Inventaire PC ────────────────────────────────────────────────────────────
+
+def get_inventory_by_ad_login(ad_login):
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM inventory_pc WHERE UPPER(ad_login)=UPPER(?) AND actif=1",
+            (ad_login,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_inventory_by_ip(ip):
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM inventory_pc WHERE ip=? AND actif=1", (ip,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_inventory_by_hostname(hostname):
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM inventory_pc WHERE UPPER(id_cap2i)=UPPER(?) AND actif=1",
+            (hostname,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_all_inventory():
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM inventory_pc ORDER BY id_cap2i"
+        ).fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Signalements de session (en attente de validation) ───────────────────────
+
+def create_session_report(user_id, reporter_name, reporter_ip, reporter_hostname,
+                           reporter_mac, inventory_match, inventory_note):
+    conn = get_conn()
+    try:
+        c = conn.execute("""
+            INSERT INTO session_reports
+                (user_id, reporter_name, reporter_ip, reporter_hostname,
+                 reporter_mac, inventory_match, inventory_note)
+            VALUES (?,?,?,?,?,?,?)
+        """, (user_id, reporter_name or None, reporter_ip, reporter_hostname,
+              reporter_mac, inventory_match, inventory_note))
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def get_pending_session_reports():
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT sr.*, u.nom, u.prenom, u.ad_login
+            FROM session_reports sr
+            JOIN users u ON u.id = sr.user_id
+            WHERE sr.status = 'pending'
+            ORDER BY sr.created_at DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_all_session_reports(limit=100):
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT sr.*, u.nom, u.prenom, u.ad_login
+            FROM session_reports sr
+            JOIN users u ON u.id = sr.user_id
+            ORDER BY sr.created_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_session_report_by_id(report_id):
+    conn = get_conn()
+    try:
+        row = conn.execute("""
+            SELECT sr.*, u.nom, u.prenom, u.ad_login
+            FROM session_reports sr
+            JOIN users u ON u.id = sr.user_id
+            WHERE sr.id = ?
+        """, (report_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def count_pending_session_reports():
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM session_reports WHERE status='pending'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def resolve_session_report(report_id, status, reviewed_by, admin_note=None):
+    """status: 'approved' ou 'rejected'"""
+    conn = get_conn()
+    try:
+        conn.execute("""
+            UPDATE session_reports
+            SET status=?, reviewed_by=?, reviewed_at=datetime('now','localtime'), admin_note=?
+            WHERE id=?
+        """, (status, reviewed_by, admin_note or None, report_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 # ─── Gestion des types d'événements ──────────────────────────────────────────
 

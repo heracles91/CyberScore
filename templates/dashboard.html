@@ -25,6 +25,14 @@
     <div class="stat-value">{{ stats.niveaux.get('Expert', 0) }}</div>
     <div class="stat-label">Experts</div>
   </div>
+  {% if nb_pending_unlock > 0 %}
+  <a href="{{ url_for('session_reports') }}" style="text-decoration:none;">
+  <div class="stat-card" style="background:#FEF3C7;border:2px solid #F59E0B;cursor:pointer;">
+    <div class="stat-value" style="color:#92400E;">{{ nb_pending_unlock }}</div>
+    <div class="stat-label" style="color:#92400E;">&#x1F513; Signalement{{ 's' if nb_pending_unlock > 1 else '' }} à valider</div>
+  </div>
+  </a>
+  {% endif %}
 </div>
 
 <!-- Répartition niveaux -->

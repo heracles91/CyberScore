@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Signalements de session{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Signalements de poste déverrouillé</h1>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">&larr; Dashboard</a>
+</div>
+
+<style>
+  .badge-pending  { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
+  .badge-approved { background:#D1FAE5; color:#065F46; border:1px solid #6EE7B7; }
+  .badge-rejected { background:#FEE2E2; color:#7F1D1D; border:1px solid #FCA5A5; }
+  .badge-yes      { background:#D1FAE5; color:#065F46; }
+  .badge-no       { background:#FEE2E2; color:#7F1D1D; }
+  .badge-unknown  { background:#F3F4F6; color:#4B5563; }
+  .badge-status, .badge-match {
+    display:inline-block; padding:2px 10px; border-radius:12px;
+    font-size:12px; font-weight:600;
+  }
+  .net-info { font-size:12px; color:#555; line-height:1.7; }
+  .net-info strong { color:#222; }
+  .inv-note { font-size:12px; margin-top:4px; color:#444; }
+  .action-form { display:inline; }
+  .note-input { font-size:12px; border:1px solid #ddd; border-radius:4px; padding:4px 8px; width:180px; }
+  .section-title {
+    font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:#888; margin:28px 0 10px;
+  }
+  tr.row-pending { background:#FFFBEB; }
+  tr.row-approved { opacity:.8; }
+  tr.row-rejected { opacity:.6; }
+</style>
+
+{% set pending = reports | selectattr('status','eq','pending') | list %}
+{% set done    = reports | rejectattr('status','eq','pending') | list %}
+
+{% if pending %}
+<p class="section-title">⏳ En attente de validation ({{ pending|length }})</p>
+<div class="card" style="padding:0;overflow:hidden;">
+  <table class="table" style="margin:0;">
+    <thead>
+      <tr>
+        <th>Utilisateur signalé</th>
+        <th>Signalé par</th>
+        <th>Infos réseau</th>
+        <th>Correspondance inventaire</th>
+        <th>Date</th>
+        <th style="min-width:280px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in pending %}
+    <tr class="row-pending">
+      <td>
+        <strong>{{ r.prenom }} {{ r.nom }}</strong><br>
+        <span style="font-size:12px;color:#666;">{{ r.ad_login }}</span>
+      </td>
+      <td>{{ r.reporter_name or '—' }}</td>
+      <td class="net-info">
+        <strong>IP&nbsp;:</strong> {{ r.reporter_ip or '—' }}<br>
+        <strong>Hostname&nbsp;:</strong> {{ r.reporter_hostname or '—' }}<br>
+        <strong>MAC&nbsp;:</strong> {{ r.reporter_mac or '—' }}
+      </td>
+      <td>
+        <span class="badge-match badge-{{ r.inventory_match }}">
+          {% if r.inventory_match == 'yes' %}✅ Confirmé
+          {% elif r.inventory_match == 'no' %}⚠️ Non concordant
+          {% else %}❓ Inconnu{% endif %}
+        </span>
+        {% if r.inventory_note %}
+        <div class="inv-note">{{ r.inventory_note }}</div>
+        {% endif %}
+      </td>
+      <td style="font-size:12px;white-space:nowrap;">{{ r.created_at }}</td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <form class="action-form" method="POST"
+                action="{{ url_for('session_report_approve', report_id=r.id) }}">
+            <input type="text" name="admin_note" class="note-input" placeholder="Note (optionnel)">
+            <button type="submit" class="btn btn-sm btn-success"
+                    onclick="return confirm('Appliquer le malus SESSION_OUVERTE à {{ r.prenom }} {{ r.nom }} ?')">
+              ✅ Approuver
+            </button>
+          </form>
+          <form class="action-form" method="POST"
+                action="{{ url_for('session_report_reject', report_id=r.id) }}">
+            <input type="text" name="admin_note" class="note-input" placeholder="Motif de rejet">
+            <button type="submit" class="btn btn-sm btn-danger">
+              ❌ Rejeter
+            </button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:40px;color:#888;">
+  <p style="font-size:32px;margin:0;">✅</p>
+  <p style="margin:8px 0 0;">Aucun signalement en attente.</p>
+</div>
+{% endif %}
+
+{% if done %}
+<p class="section-title">Historique ({{ done|length }})</p>
+<div class="card" style="padding:0;overflow:hidden;">
+  <table class="table" style="margin:0;">
+    <thead>
+      <tr>
+        <th>Utilisateur</th>
+        <th>Signalé par</th>
+        <th>IP / Hostname / MAC</th>
+        <th>Inventaire</th>
+        <th>Statut</th>
+        <th>Traité par</th>
+        <th>Note admin</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in done %}
+    <tr class="row-{{ r.status }}">
+      <td><strong>{{ r.prenom }} {{ r.nom }}</strong><br>
+          <span style="font-size:12px;color:#666;">{{ r.ad_login }}</span></td>
+      <td>{{ r.reporter_name or '—' }}</td>
+      <td class="net-info">
+        {{ r.reporter_ip or '—' }}<br>
+        {{ r.reporter_hostname or '—' }}<br>
+        <span style="color:#999;">{{ r.reporter_mac or '—' }}</span>
+      </td>
+      <td>
+        <span class="badge-match badge-{{ r.inventory_match }}">
+          {% if r.inventory_match == 'yes' %}✅{% elif r.inventory_match == 'no' %}⚠️{% else %}❓{% endif %}
+        </span>
+      </td>
+      <td>
+        <span class="badge-status badge-{{ r.status }}">
+          {% if r.status == 'approved' %}Approuvé{% else %}Rejeté{% endif %}
+        </span>
+      </td>
+      <td style="font-size:12px;">{{ r.reviewed_by or '—' }}<br>
+          <span style="color:#999;">{{ r.reviewed_at or '' }}</span></td>
+      <td style="font-size:12px;">{{ r.admin_note or '—' }}</td>
+      <td style="font-size:12px;white-space:nowrap;">{{ r.created_at }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

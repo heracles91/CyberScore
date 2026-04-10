@@ -23,6 +23,14 @@
     <li><a href="{{ url_for('quiz_list') }}" {% if request.endpoint in ['quiz_list','quiz_add','quiz_detail'] %}class="active"{% endif %}>Quizzes</a></li>
     <li><a href="{{ url_for('formation_list') }}" {% if request.endpoint in ['formation_list','formation_add','formation_detail','formation_edit'] %}class="active"{% endif %}>Formations</a></li>
     <li><a href="{{ url_for('leaderboard') }}" target="_blank">Leaderboard ↗</a></li>
+    <li>
+      <a href="{{ url_for('session_reports') }}" {% if request.endpoint in ['session_reports','session_report_approve','session_report_reject'] %}class="active"{% endif %} style="position:relative;">
+        Signalements
+        {% if nb_pending_reports > 0 %}
+        <span style="position:absolute;top:-6px;right:-10px;background:#D92B2B;color:#fff;border-radius:50%;font-size:10px;font-weight:700;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 3px;">{{ nb_pending_reports }}</span>
+        {% endif %}
+      </a>
+    </li>
     <li><a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>Paramètres</a></li>
     <li><a href="{{ url_for('logout') }}" class="nav-logout">Déconnexion</a></li>
   </ul>

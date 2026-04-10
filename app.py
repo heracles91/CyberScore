@@ -16,6 +16,9 @@ import os
 import config
 import database as db
 import models
+import socket
+import subprocess
+import re as _re
 import mailer
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
@@ -33,12 +36,66 @@ csrf = CSRFProtect(app)
 @app.context_processor
 def inject_globals():
     """Injecte les variables globales dans tous les templates."""
+    try:
+        nb_pending = db.count_pending_session_reports()
+    except Exception:
+        nb_pending = 0
     return {
         "config": config,
         # Valeurs modifiables via l'interface (priorité BDD > config.py)
         "company_name": db.get_setting("company_name", config.COMPANY_NAME),
         "support_email": db.get_setting("support_email", config.SUPPORT_EMAIL),
+        "nb_pending_reports": nb_pending,
     }
+
+
+def _get_network_info(ip):
+    """Résout le nom d'hôte et la MAC depuis l'IP du requérant."""
+    info = {"ip": ip, "hostname": None, "mac": None}
+    if not ip or ip in ("127.0.0.1", "::1"):
+        return info
+    try:
+        info["hostname"] = socket.gethostbyaddr(ip)[0].split(".")[0].upper()
+    except Exception:
+        pass
+    try:
+        subprocess.run(["ping", "-c", "1", "-W", "1", ip],
+                       capture_output=True, timeout=2)
+        out = subprocess.run(["ip", "neigh", "show", ip],
+                             capture_output=True, text=True, timeout=2).stdout
+        m = _re.search(r"lladdr\s+([0-9a-f:]{17})", out, _re.IGNORECASE)
+        if m:
+            info["mac"] = m.group(1).upper()
+    except Exception:
+        pass
+    return info
+
+
+def _check_inventory_match(ad_login, requester_ip, requester_hostname):
+    """Retourne (match: 'yes'|'no'|'unknown', note: str)."""
+    entries = db.get_inventory_by_ad_login(ad_login)
+    if not entries:
+        return "unknown", f"Aucun poste trouvé dans l'inventaire pour {ad_login}."
+    for e in entries:
+        hn_ok = bool(requester_hostname and e["id_cap2i"] and
+                     e["id_cap2i"].upper() == requester_hostname.upper())
+        ip_ok = bool(requester_ip and e["ip"] and e["ip"] == requester_ip)
+        if hn_ok or ip_ok:
+            details = []
+            if hn_ok: details.append('hostname "' + requester_hostname + '" = ' + e['id_cap2i'])
+            if ip_ok: details.append(f"IP {requester_ip} = {e['ip']}")
+            return "yes", (
+                f"✅ Correspondance inventaire ({', '.join(details)}) — "
+                f"c'est bien le poste attribué à l'utilisateur signalé."
+            )
+    pc_list = ", ".join(
+        f"{e['id_cap2i']} ({e['ip'] or 'IP inconnue'})" for e in entries
+    )
+    return "no", (
+        f"⚠️ Pas de correspondance : le requérant "
+        f"({requester_hostname or requester_ip or 'inconnu'}) "
+        f"n'est pas le poste de {ad_login} dans l'inventaire ({pc_list})."
+    )
 
 
 def _get_company_name():
@@ -134,10 +191,12 @@ def dashboard():
     leaderboard = models.get_leaderboard_with_progression()
     events = db.get_recent_events(10)
     stats = db.get_stats_today()
+    nb_pending_unlock = db.count_pending_session_reports()
     return render_template("dashboard.html",
                            leaderboard=leaderboard,
                            events=events,
-                           stats=stats)
+                           stats=stats,
+                           nb_pending_unlock=nb_pending_unlock)
 
 
 # ─── Utilisateurs ─────────────────────────────────────────────────────────────
@@ -648,12 +707,70 @@ def report_unlock():
     company_name = _get_company_name()
 
     if request.method == "POST":
-        user_id   = request.form.get("user_id", "").strip()
-        reporter  = request.form.get("reporter", "").strip() or "Anonyme"
+        user_id_raw = request.form.get("user_id", "").strip()
+        reporter    = request.form.get("reporter", "").strip()
 
-        if not user_id or not user_id.isdigit():
+        if not reporter:
+            flash("Votre nom est requis pour soumettre un signalement.", "error")
+            return render_template("report_unlock.html", users=users,
+                                   company_name=company_name, etype_points=etype_points)
+
+        if not user_id_raw or not user_id_raw.isdigit():
             flash("Veuillez sélectionner un utilisateur.", "error")
-            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+            return render_template("report_unlock.html", users=users,
+                                   company_name=company_name, etype_points=etype_points)
+
+        user_id = int(user_id_raw)
+        user = db.get_user_by_id(user_id)
+        if not user or not user.get("actif"):
+            flash("Utilisateur introuvable.", "error")
+            return render_template("report_unlock.html", users=users,
+                                   company_name=company_name, etype_points=etype_points)
+
+        if not etype:
+            flash("Type d’événement SESSION_OUVERTE introuvable.", "error")
+            return render_template("report_unlock.html", users=users,
+                                   company_name=company_name, etype_points=etype_points)
+
+        # Anti-doublon : signalement pending déjà existant pour cet utilisateur
+        pending = [r for r in db.get_pending_session_reports()
+                   if r["user_id"] == user_id]
+        if pending:
+            flash(
+                f"{user['prenom']} {user['nom']} a déjà un signalement en attente de validation. "
+                "Merci, l'administrateur a été notifié.",
+                "info"
+            )
+            return render_template("report_unlock.html", users=users,
+                                   company_name=company_name, etype_points=etype_points)
+
+        # Collecte infos réseau
+        requester_ip = request.remote_addr
+        net = _get_network_info(requester_ip)
+        inv_match, inv_note = _check_inventory_match(
+            user["ad_login"], net["ip"], net["hostname"]
+        )
+
+        db.create_session_report(
+            user_id=user_id,
+            reporter_name=reporter,
+            reporter_ip=net["ip"],
+            reporter_hostname=net["hostname"],
+            reporter_mac=net["mac"],
+            inventory_match=inv_match,
+            inventory_note=inv_note,
+        )
+
+        flash(
+            f"Signalement transmis à l'administrateur IT pour validation. Merci {reporter} !",
+            "success"
+        )
+        return render_template("report_unlock.html", users=users,
+                               company_name=company_name, etype_points=etype_points)
+
+    return render_template("report_unlock.html", users=users,
+                           company_name=company_name, etype_points=etype_points)
+
 
         user_id = int(user_id)
         user = db.get_user_by_id(user_id)
@@ -689,6 +806,66 @@ def report_unlock():
         return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
 
     return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+# ─── Admin — Validation des signalements de session ───────────────────────────
+
+@app.route("/admin/session-reports")
+@login_required
+def session_reports():
+    reports = db.get_all_session_reports()
+    return render_template("session_reports.html", reports=reports)
+
+
+@app.route("/admin/session-reports/<int:report_id>/approve", methods=["POST"])
+@login_required
+def session_report_approve(report_id):
+    report = db.get_session_report_by_id(report_id)
+    if not report or report["status"] != "pending":
+        flash("Signalement introuvable ou déjà traité.", "error")
+        return redirect(url_for("session_reports"))
+
+    admin = session.get("admin_user", "admin")
+    admin_note = request.form.get("admin_note", "").strip()
+    etype = db.get_event_type_by_code("SESSION_OUVERTE")
+    if not etype:
+        flash("Type SESSION_OUVERTE introuvable.", "error")
+        return redirect(url_for("session_reports"))
+
+    ok, msg, _ = models.add_event(
+        report["user_id"], etype["id"], None,
+        f"Poste déverrouillé — signalé par {report['reporter_name'] or 'Anonyme'}"
+        + (f" — note : {admin_note}" if admin_note else ""),
+        admin
+    )
+    if ok:
+        db.resolve_session_report(report_id, "approved", admin, admin_note)
+        flash(
+            f"Approuvé — malus {abs(etype['points'])} pts appliqué à "
+            f"{report['prenom']} {report['nom']}.",
+            "success"
+        )
+    else:
+        flash(f"Impossible d'appliquer le malus : {msg}", "error")
+    return redirect(url_for("session_reports"))
+
+
+@app.route("/admin/session-reports/<int:report_id>/reject", methods=["POST"])
+@login_required
+def session_report_reject(report_id):
+    report = db.get_session_report_by_id(report_id)
+    if not report or report["status"] != "pending":
+        flash("Signalement introuvable ou déjà traité.", "error")
+        return redirect(url_for("session_reports"))
+
+    admin = session.get("admin_user", "admin")
+    admin_note = request.form.get("admin_note", "").strip()
+    db.resolve_session_report(report_id, "rejected", admin, admin_note)
+    flash(
+        f"Rejeté — aucun malus appliqué à {report['prenom']} {report['nom']}.",
+        "info"
+    )
+    return redirect(url_for("session_reports"))
+
 
 # ─── Quiz — Admin ─────────────────────────────────────────────────────────────
 

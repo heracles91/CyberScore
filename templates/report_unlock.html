@@ -81,7 +81,7 @@
 
       <div class="warning-note">
         ⚠️ Un malus de <strong>{{ etype_points }} pts</strong> sera appliqué au score CyberScore de la personne concernée.
-        Le signalement est limité à <strong>1 fois par 30 minutes</strong> par utilisateur.
+        Le signalement sera <strong>examiné par l'administrateur IT</strong> avant application du malus. Un seul signalement peut être en attente par utilisateur à la fois.
       </div>
 
       <form method="POST">
@@ -95,9 +95,9 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="reporter">Votre nom (optionnel)</label>
-          <input type="text" name="reporter" id="reporter" placeholder="Ex : Jean Dupont" maxlength="80">
-          <span class="hint">Pour que l'admin puisse vous contacter si besoin.</span>
+          <label for="reporter">Votre nom *</label>
+          <input type="text" name="reporter" id="reporter" placeholder="Ex : Jean Dupont" maxlength="80" required>
+          <span class="hint">Votre nom est requis. Il sera visible par l'administrateur IT uniquement.</span>
         </div>
         <button type="submit" class="btn-submit">📣 Envoyer le signalement</button>
       </form>
