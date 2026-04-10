@@ -201,6 +201,10 @@
           One-shot (1 seule fois par utilisateur)
         </label>
       </div>
+      <div class="form-group">
+        <label for="monthly_limit_new">Limite mensuelle (0 = illimité)</label>
+        <input type="number" name="monthly_limit" id="monthly_limit_new" value="0" min="0" style="width:80px">
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Créer</button>
         <button type="button" class="btn btn-secondary" id="cancelAdd">Annuler</button>
@@ -223,7 +227,7 @@
             <td><code>{{ et.code }}</code></td>
             <td>{{ et.label }}</td>
             <td class="pts-pos">+{{ et.points }}</td>
-            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %}</td>
+            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %} {% if et.monthly_limit %}<span style="background:#D1ECF1;color:#0C5460;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Max {{ et.monthly_limit }}/mois</span>{% endif %}</td>
             <td onclick="event.stopPropagation()">
               <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
                     onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">
@@ -249,7 +253,7 @@
             <td><code>{{ et.code }}</code></td>
             <td>{{ et.label }}</td>
             <td class="pts-neg">{{ et.points }}</td>
-            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %}</td>
+            <td>{% if et.one_shot %}<span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">One-shot</span>{% endif %} {% if et.monthly_limit %}<span style="background:#D1ECF1;color:#0C5460;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Max {{ et.monthly_limit }}/mois</span>{% endif %}</td>
             <td onclick="event.stopPropagation()">
               <form method="POST" action="{{ url_for('event_type_delete', type_id=et.id) }}"
                     onsubmit="return confirm('Supprimer « {{ et.label }} » ?')">

@@ -37,6 +37,13 @@ def add_event(user_id, type_id, points_override=None, raison="", created_by="adm
     if etype.get("one_shot") and db.user_has_one_shot_event(user_id, type_id):
         return False, f"{etype['code']} déjà attribué à cet utilisateur (événement unique).", None
 
+    # Plafond mensuel par type d'événement
+    if etype.get("monthly_limit", 0) > 0:
+        count = db.get_user_monthly_event_count(user_id, type_id)
+        if count >= etype["monthly_limit"]:
+            lim = etype["monthly_limit"]
+            return False, f"Limite mensuelle atteinte pour « {etype['label']} » ({lim} fois/mois max). Événement non enregistré.", None
+
     # Points effectifs
     points = points_override if points_override is not None else etype["points"]
 

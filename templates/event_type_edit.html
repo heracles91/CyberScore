@@ -48,6 +48,13 @@
       </label>
     </div>
 
+    <div class="form-group">
+      <label for="monthly_limit">Limite mensuelle par utilisateur</label>
+      <input type="number" name="monthly_limit" id="monthly_limit"
+             value="{{ etype.monthly_limit if etype.monthly_limit is defined else 0 }}" min="0" style="width:80px">
+      <small class="hint">0 = illimité &nbsp;&middot;&nbsp; Ex : 2 = max 2 fois récompensé(es) par mois par utilisateur</small>
+    </div>
+
     <hr class="step-divider">
 
     <div style="display:flex;gap:10px;">

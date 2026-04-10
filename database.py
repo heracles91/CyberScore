@@ -234,6 +234,7 @@ def init_db():
             "ALTER TABLE quiz_attempts ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE quiz_questions ADD COLUMN multiple_answers INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE event_types ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE event_types ADD COLUMN monthly_limit INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 c.execute(migration_sql)
@@ -296,14 +297,14 @@ def set_setting(key, value):
 
 # ─── Gestion des types d'événements ──────────────────────────────────────────
 
-def create_event_type(code, label, points, direction, one_shot=0):
+def create_event_type(code, label, points, direction, one_shot=0, monthly_limit=0):
     """Crée un nouveau type d'événement. Retourne (ok, error_msg)."""
     conn = get_conn()
     try:
         subject = f"CyberScore — {label}"
         conn.execute(
-            "INSERT INTO event_types (code, label, points, direction, email_subject, one_shot) VALUES (?,?,?,?,?,?)",
-            (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot))
+            "INSERT INTO event_types (code, label, points, direction, email_subject, one_shot, monthly_limit) VALUES (?,?,?,?,?,?,?)",
+            (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot), int(monthly_limit))
         )
         conn.commit()
         return True, None
@@ -334,16 +335,16 @@ def delete_event_type(type_id):
         conn.close()
 
 
-def update_event_type(type_id, code, label, points, direction, one_shot):
+def update_event_type(type_id, code, label, points, direction, one_shot, monthly_limit=0):
     """Met à jour un type d'événement. Retourne (ok, error_msg)."""
     conn = get_conn()
     try:
         subject = f"CyberScore — {label}"
         conn.execute("""
             UPDATE event_types
-            SET code=?, label=?, points=?, direction=?, email_subject=?, one_shot=?
+            SET code=?, label=?, points=?, direction=?, email_subject=?, one_shot=?, monthly_limit=?
             WHERE id=?
-        """, (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot), type_id))
+        """, (code.strip().upper(), label.strip(), int(points), direction, subject, int(one_shot), int(monthly_limit), type_id))
         conn.commit()
         return True, None
     except sqlite3.IntegrityError:
@@ -625,6 +626,34 @@ def update_event(event_id, type_id, points, raison):
             (type_id, points, raison, event_id)
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_recent_session_event(user_id, type_id, minutes=30):
+    """Retourne True si un événement non annulé de ce type existe pour cet utilisateur dans les X dernières minutes."""
+    conn = get_conn()
+    try:
+        cutoff = (datetime.now(PARIS_TZ) - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+        row = conn.execute(
+            "SELECT id FROM events WHERE user_id=? AND type_id=? AND annule=0 AND created_at >= ?",
+            (user_id, type_id, cutoff)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_user_monthly_event_count(user_id, type_id):
+    """Retourne le nb d'événements non annulés de ce type pour l'utilisateur ce mois-ci."""
+    conn = get_conn()
+    try:
+        month_start = datetime.now(PARIS_TZ).strftime("%Y-%m-01")
+        row = conn.execute("""
+            SELECT COUNT(*) as cnt FROM events
+            WHERE user_id=? AND type_id=? AND annule=0 AND created_at >= ?
+        """, (user_id, type_id, month_start)).fetchone()
+        return row["cnt"]
     finally:
         conn.close()
 

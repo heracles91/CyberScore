@@ -562,12 +562,13 @@ def event_type_add():
         errors.append("Les points doivent être un entier.")
 
     one_shot = 1 if request.form.get("one_shot") else 0
+    monthly_limit = max(0, int(request.form.get("monthly_limit", 0) or 0))
 
     if errors:
         for e in errors:
             flash(e, "error")
     else:
-        ok, err = db.create_event_type(code, label, pts, direction, one_shot)
+        ok, err = db.create_event_type(code, label, pts, direction, one_shot, monthly_limit)
         if ok:
             flash(f"Type d'événement « {label} » créé.", "success")
         else:
@@ -590,6 +591,7 @@ def event_type_edit(type_id):
         points    = request.form.get("points", "0").strip()
         direction = request.form.get("direction", "+")
         one_shot  = 1 if request.form.get("one_shot") else 0
+        monthly_limit = max(0, int(request.form.get("monthly_limit", 0) or 0))
 
         errors = []
         if not code or not re.match(r'^[A-Z0-9_]+$', code):
@@ -613,7 +615,7 @@ def event_type_edit(type_id):
                 flash(e, "error")
             return render_template("event_type_edit.html", etype=etype)
 
-        ok, err = db.update_event_type(type_id, code, label, pts, direction, one_shot)
+        ok, err = db.update_event_type(type_id, code, label, pts, direction, one_shot, monthly_limit)
         if ok:
             flash(f"Type « {label} » mis à jour.", "success")
             return redirect(url_for("settings") + "#event-types")
@@ -634,6 +636,59 @@ def event_type_delete(type_id):
         flash(f"Impossible de supprimer : {err}", "error")
     return redirect(url_for("settings") + "#event-types")
 
+
+
+# ─── Signalement poste déverrouillé (public) ─────────────────────────────────
+
+@app.route("/report/unlock", methods=["GET", "POST"])
+def report_unlock():
+    users = [u for u in db.get_all_users(actif_only=True) if not u.get("is_tester")]
+    etype = db.get_event_type_by_code("SESSION_OUVERTE")
+    etype_points = abs(etype["points"]) if etype else 20
+    company_name = _get_company_name()
+
+    if request.method == "POST":
+        user_id   = request.form.get("user_id", "").strip()
+        reporter  = request.form.get("reporter", "").strip() or "Anonyme"
+
+        if not user_id or not user_id.isdigit():
+            flash("Veuillez sélectionner un utilisateur.", "error")
+            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+        user_id = int(user_id)
+        user = db.get_user_by_id(user_id)
+        if not user or not user.get("actif"):
+            flash("Utilisateur introuvable.", "error")
+            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+        if not etype:
+            flash("Type d'événement SESSION_OUVERTE introuvable.", "error")
+            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+        if db.get_recent_session_event(user_id, etype["id"], minutes=30):
+            flash(
+                f"{user['prenom']} {user['nom']} a déjà été signalé(e) récemment. "
+                "Merci, le signalement a déjà été pris en compte.",
+                "info"
+            )
+            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+        ok, msg, _ = models.add_event(
+            user_id, etype["id"], None,
+            f"Poste déverrouillé signalé par {reporter}",
+            "portail_it"
+        )
+        if ok:
+            flash(
+                f"Signalement enregistré pour {user['prenom']} {user['nom']}. Merci !",
+                "success"
+            )
+        else:
+            flash(f"Impossible d'enregistrer : {msg}", "error")
+
+        return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
+
+    return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
 
 # ─── Quiz — Admin ─────────────────────────────────────────────────────────────
 
