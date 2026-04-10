@@ -772,41 +772,6 @@ def report_unlock():
                            company_name=company_name, etype_points=etype_points)
 
 
-        user_id = int(user_id)
-        user = db.get_user_by_id(user_id)
-        if not user or not user.get("actif"):
-            flash("Utilisateur introuvable.", "error")
-            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
-
-        if not etype:
-            flash("Type d'événement SESSION_OUVERTE introuvable.", "error")
-            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
-
-        if db.get_recent_session_event(user_id, etype["id"], minutes=30):
-            flash(
-                f"{user['prenom']} {user['nom']} a déjà été signalé(e) récemment. "
-                "Merci, le signalement a déjà été pris en compte.",
-                "info"
-            )
-            return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
-
-        ok, msg, _ = models.add_event(
-            user_id, etype["id"], None,
-            f"Poste déverrouillé signalé par {reporter}",
-            "portail_it"
-        )
-        if ok:
-            flash(
-                f"Signalement enregistré pour {user['prenom']} {user['nom']}. Merci !",
-                "success"
-            )
-        else:
-            flash(f"Impossible d'enregistrer : {msg}", "error")
-
-        return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
-
-    return render_template("report_unlock.html", users=users, company_name=company_name, etype_points=etype_points)
-
 # ─── Admin — Validation des signalements de session ───────────────────────────
 
 @app.route("/admin/session-reports")
