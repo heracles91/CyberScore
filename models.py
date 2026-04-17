@@ -271,6 +271,34 @@ def send_quiz_reminders(quiz_id, admin_login):
     return sent, errors
 
 
+def resend_quiz_individual(attempt_id):
+    """
+    Réinitialise une tentative individuelle et renvoie un nouveau lien par mail.
+    Retourne (ok, message).
+    """
+    import mailer as _mailer
+
+    old = db.reset_quiz_attempt(attempt_id)
+    if not old:
+        return False, "Tentative introuvable."
+
+    quiz = db.get_quiz_by_id(old["quiz_id"])
+    if not quiz:
+        return False, "Quiz introuvable."
+
+    user = db.get_user_by_id(old["user_id"])
+    if not user:
+        return False, "Utilisateur introuvable."
+
+    token = db.create_quiz_attempt(quiz["id"], user["id"])
+    try:
+        _mailer.send_quiz_invitation(user, quiz, token)
+        db.mark_quiz_attempt_sent(token)
+        return True, f"Nouveau lien envoyé à {user['prenom']} {user['nom']}."
+    except Exception as e:
+        return False, f"Erreur d'envoi : {e}"
+
+
 def apply_inactivity_decay():
     """
     Applique un malus d'inactivité aux utilisateurs sans événement bonus

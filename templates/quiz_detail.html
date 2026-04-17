@@ -144,6 +144,7 @@
         <th>Points gagnés</th>
         <th>Statut</th>
         <th>Complété le</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -181,6 +182,13 @@
           {% endif %}
         </td>
         <td class="date-cell">{{ (r.completed_at or r.sent_at or '—')[:16] }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('quiz_resend_individual', quiz_id=quiz.id, attempt_id=r.id) }}"
+                style="display:inline;" onsubmit="return confirm('Renvoyer le quiz à {{ r.prenom }} {{ r.nom }} ?\nSa tentative précédente sera supprimée.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm" title="Renvoyer le quiz">↻ Renvoyer</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

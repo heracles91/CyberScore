@@ -1096,6 +1096,24 @@ def create_test_quiz_attempt(quiz_id, user_id):
         conn.close()
 
 
+def reset_quiz_attempt(attempt_id):
+    """Supprime une tentative (+ ses réponses) et retourne (quiz_id, user_id) pour pouvoir en recréer une."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT quiz_id, user_id FROM quiz_attempts WHERE id=? AND is_test=0",
+            (attempt_id,)
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("DELETE FROM quiz_attempt_answers WHERE attempt_id=?", (attempt_id,))
+        conn.execute("DELETE FROM quiz_attempts WHERE id=?", (attempt_id,))
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
 def toggle_quiz_actif(quiz_id):
     conn = get_conn()
     try:

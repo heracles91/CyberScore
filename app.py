@@ -861,6 +861,14 @@ def quiz_remind(quiz_id):
     return redirect(url_for("quiz_detail", quiz_id=quiz_id))
 
 
+@app.route("/quizzes/<int:quiz_id>/resend/<int:attempt_id>", methods=["POST"])
+@login_required
+def quiz_resend_individual(quiz_id, attempt_id):
+    ok, msg = models.resend_quiz_individual(attempt_id)
+    flash(msg, "success" if ok else "error")
+    return redirect(url_for("quiz_detail", quiz_id=quiz_id))
+
+
 @app.route("/quizzes/<int:quiz_id>/toggle", methods=["POST"])
 @login_required
 def quiz_toggle(quiz_id):
